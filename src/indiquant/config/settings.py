@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class IndiQuantSettings(BaseSettings):
     model_config = SettingsConfigDict(
