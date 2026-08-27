@@ -54,9 +54,15 @@ def backfill(
     """Run backfill for data sources across a date range."""
     from indiquant.config.settings import IndiQuantSettings
     from indiquant.ingest.backfill import run_backfill
+    from indiquant.ingest.sources.bulk_block_deals import BulkBlockDealsSource
     from indiquant.ingest.sources.corporate_actions import CorporateActionsSource
+    from indiquant.ingest.sources.fii_dii import FiiDiiSource
+    from indiquant.ingest.sources.fundamentals import FundamentalsSource
     from indiquant.ingest.sources.index_membership import IndexMembershipSource
     from indiquant.ingest.sources.nse_bhavcopy import EquityBhavcopySource
+    from indiquant.ingest.sources.nse_fo_bhavcopy import FoBhavcopySource
+    from indiquant.ingest.sources.nse_participant_oi import ParticipantOiSource
+    from indiquant.ingest.sources.shareholding import ShareholdingSource
     from indiquant.logging import setup_logging
     from indiquant.store.lakehouse import Lakehouse
 
@@ -66,9 +72,15 @@ def backfill(
 
     # Source registry in dependency order
     all_sources = {
-        "nse_equity_daily": EquityBhavcopySource(lakehouse),
         "nse_corporate_actions": CorporateActionsSource(lakehouse),
         "nse_index_membership": IndexMembershipSource(lakehouse),
+        "nse_equity_daily": EquityBhavcopySource(lakehouse),
+        "nse_fo_daily": FoBhavcopySource(lakehouse),
+        "nse_participant_oi": ParticipantOiSource(lakehouse),
+        "nse_fii_dii": FiiDiiSource(lakehouse),
+        "nse_bulk_block_deals": BulkBlockDealsSource(lakehouse),
+        "nse_shareholding": ShareholdingSource(lakehouse),
+        "nse_fundamentals": FundamentalsSource(lakehouse),
     }
 
     if source:
@@ -212,7 +224,7 @@ def derive_calendar(
     typer.echo("Review this file, then freeze as ingest/reference/nse_holidays.parquet")
 
     import polars as pl
-    
+
     holidays = calendar_df.filter(pl.col("is_holiday"))
     specials = calendar_df.filter(pl.col("is_special_session"))
     typer.echo(f"  Holidays:         {len(holidays)}")

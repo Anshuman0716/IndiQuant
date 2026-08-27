@@ -25,10 +25,12 @@ class EquityDailySchema(_ProvenanceMixin):
     close: Series[float] = pa.Field(gt=0.0)
     volume: Series[int] = pa.Field(ge=0)
 
+    @classmethod
     @pa.dataframe_check
     def high_ge_low(cls, df: pl.LazyFrame) -> pl.Expr:
         return pl.col("high") >= pl.col("low")
 
+    @classmethod
     @pa.dataframe_check
     def close_within_bars(cls, df: pl.LazyFrame) -> pl.Expr:
         return (pl.col("close") >= pl.col("low")) & (pl.col("close") <= pl.col("high"))

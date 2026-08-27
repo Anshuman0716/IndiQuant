@@ -101,13 +101,18 @@ class IndexMembershipSource(Source):
         symbol_col = _find_column(df, ["Symbol", "symbol", "SYMBOL"])
         reason_col = _find_column(df, ["Reason", "reason", "REASON"])
 
-        if not all([index_col, date_col, symbol_col]):
+        if not index_col or not date_col or not symbol_col or not reason_col:
             logger.error(
                 "index_membership_parse_failed",
                 columns=df.columns,
                 msg="Could not identify required columns",
             )
             return pl.DataFrame()
+            
+        assert index_col is not None
+        assert date_col is not None
+        assert symbol_col is not None
+        assert reason_col is not None
 
         records: list[dict[str, object]] = []
 
