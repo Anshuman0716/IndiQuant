@@ -1,6 +1,6 @@
 """Ingestion CLI subcommands for the iq CLI."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated
 
 import typer
@@ -17,7 +17,7 @@ ingest_app = typer.Typer(
 @ingest_app.command("backfill")
 def backfill(
     from_date: Annotated[
-        date,
+        datetime,
         typer.Option(
             "--from",
             "-f",
@@ -26,7 +26,7 @@ def backfill(
         ),
     ],
     to_date: Annotated[
-        date,
+        datetime,
         typer.Option(
             "--to",
             "-t",
@@ -80,13 +80,13 @@ def backfill(
         sources_to_run = list(all_sources.values())
 
     typer.echo(
-        f"Backfill: {from_date} → {to_date}, "
+        f"Backfill: {from_date.date()} → {to_date.date()}, "
         f"sources={[s.name for s in sources_to_run]}, mode={mode.value}"
     )
 
     report = run_backfill(
-        start=from_date,
-        end=to_date,
+        start=from_date.date(),
+        end=to_date.date(),
         sources=sources_to_run,
         mode=mode,
         lakehouse=lakehouse,
@@ -155,7 +155,7 @@ def status() -> None:
 @ingest_app.command("derive-calendar")
 def derive_calendar(
     from_date: Annotated[
-        date,
+        datetime,
         typer.Option(
             "--from",
             "-f",
@@ -164,7 +164,7 @@ def derive_calendar(
         ),
     ],
     to_date: Annotated[
-        date,
+        datetime,
         typer.Option(
             "--to",
             "-t",
@@ -204,7 +204,7 @@ def derive_calendar(
         typer.echo("No bhavcopy data found. Run backfill first.")
         raise typer.Exit(1) from e
 
-    calendar_df = derive_holiday_calendar(bhavcopy_dates, from_date, to_date)
+    calendar_df = derive_holiday_calendar(bhavcopy_dates, from_date.date(), to_date.date())
 
     # Write CSV for human review
     calendar_df.write_csv(output)
