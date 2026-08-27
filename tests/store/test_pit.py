@@ -1,8 +1,6 @@
 from datetime import date
 
-import pandas as pd
 import polars as pl
-import pytest
 
 from indiquant.store.lakehouse import Lakehouse
 from indiquant.store.pit import as_known_on
@@ -30,9 +28,7 @@ def test_future_knowledge_date_invisible(tmp_lakehouse: Lakehouse) -> None:
             }
         ],
     )
-    result = as_known_on(
-        tmp_lakehouse, table="fundamentals", asof=date(2024, 4, 15)
-    )
+    result = as_known_on(tmp_lakehouse, table="fundamentals", asof=date(2024, 4, 15))
     assert result.empty
 
 
@@ -48,9 +44,7 @@ def test_past_knowledge_date_visible(tmp_lakehouse: Lakehouse) -> None:
             }
         ],
     )
-    result = as_known_on(
-        tmp_lakehouse, table="fundamentals", asof=date(2024, 6, 1)
-    )
+    result = as_known_on(tmp_lakehouse, table="fundamentals", asof=date(2024, 6, 1))
     assert len(result) == 1
     assert result.iloc[0]["revenue"] == 1000.0
 
@@ -122,9 +116,7 @@ def test_isin_filter(tmp_lakehouse: Lakehouse) -> None:
             },
         ],
     )
-    result = as_known_on(
-        tmp_lakehouse, table="fundamentals", asof=date(2024, 2, 1), isin="INE002"
-    )
+    result = as_known_on(tmp_lakehouse, table="fundamentals", asof=date(2024, 2, 1), isin="INE002")
     assert len(result) == 1
     assert result.iloc[0]["isin"] == "INE002"
 

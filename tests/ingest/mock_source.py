@@ -1,10 +1,12 @@
+from datetime import date
+
 import pandera.polars as pa
 import polars as pl
-from datetime import date
 from pandera.typing.polars import Series
 
 from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
+
 
 class MockSchema(pa.DataFrameModel):
     value: Series[int] = pa.Field(ge=0)

@@ -1,8 +1,8 @@
-import json
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import duckdb
 import pandas as pd
@@ -25,7 +25,7 @@ class Lakehouse:
         self.bronze_dir = self.data_dir / "bronze"
         self.silver_dir = self.data_dir / "silver"
         self.meta_dir = self.data_dir / "meta"
-        
+
         # We use an in-memory database instance to query the parquet files.
         # This gives us lock-free compute while data rests on disk.
         self._con = duckdb.connect()
@@ -54,7 +54,12 @@ class Lakehouse:
         return path.exists()
 
     def write_bronze(
-        self, source: str, table: str, df: pl.DataFrame, target_date: date, force: bool = False
+        self,
+        source: str,
+        table: str,
+        df: pl.DataFrame,
+        target_date: date,
+        force: bool = False,
     ) -> Path:
         """Write a Polars DataFrame to bronze Parquet. Immutable."""
         path = (
@@ -104,9 +109,9 @@ class Lakehouse:
     ) -> pd.DataFrame:
         """Read from silver layer with predicate pushdown. Returns pandas."""
         table_path = (self.silver_dir / name / "**/*.parquet").as_posix()
-        
-        query = f"SELECT * FROM read_parquet('{table_path}', hive_partitioning = true, union_by_name = true)"
-        
+
+        query = f"SELECT * FROM read_parquet('{table_path}', hive_partitioning = true, union_by_name = true)"  # noqa: E501
+
         where_clauses: list[str] = []
         params: list[Any] = []
 
@@ -119,7 +124,7 @@ class Lakehouse:
 
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
-            
+
         if columns:
             col_str = ", ".join(columns)
             query = query.replace("SELECT *", f"SELECT {col_str}")
@@ -134,11 +139,11 @@ class Lakehouse:
         target_date = date.fromisoformat(record["target_date"])
         year = target_date.year
         df = df.with_columns(pl.lit(year).alias("year"))
-        
+
         log_dir = self.meta_dir / "data_quality"
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # We append to the existing partition file using DuckDB, 
+        # We append to the existing partition file using DuckDB,
         # or create it if it doesn't exist.
         with self.connection() as cur:
             cur.execute(
@@ -156,12 +161,12 @@ class Lakehouse:
     def read_quality_log(self, source: str | None = None) -> pd.DataFrame:
         """Read data-quality records."""
         log_dir = (self.meta_dir / "data_quality" / "**/*.parquet").as_posix()
-        query = f"SELECT * FROM read_parquet('{log_dir}', hive_partitioning = true, union_by_name = true)"
+        query = f"SELECT * FROM read_parquet('{log_dir}', hive_partitioning = true, union_by_name = true)"  # noqa: E501
         params: list[str] = []
         if source:
             query += " WHERE source = ?"
             params.append(source)
-            
+
         with self.connection() as cur:
             try:
                 return cur.execute(query, params).df()

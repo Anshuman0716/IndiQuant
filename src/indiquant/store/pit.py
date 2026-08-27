@@ -45,7 +45,7 @@ def as_known_on(
     )
 
     table_path = (lakehouse.silver_dir / table / "**/*.parquet").as_posix()
-    
+
     # We use union_by_name=true to handle schema evolution cleanly
     query = f"""
     WITH ranked AS (
@@ -78,7 +78,7 @@ def as_known_on(
             isin=isin,
         )
         return pd.DataFrame()
-        
+
     if df.empty:
         logger.warning(
             "pit_query_empty",

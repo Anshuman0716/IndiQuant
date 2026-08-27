@@ -3,9 +3,7 @@ import json
 import time
 import uuid
 from abc import ABC, abstractmethod
-from datetime import date, datetime, timezone
-from pathlib import Path
-from typing import Any
+from datetime import UTC, date, datetime
 
 import httpx
 import pandera.polars as pa
@@ -28,6 +26,10 @@ class Source(ABC):
     prime_url: str | None = None
     schema: type[pa.DataFrameModel]
     silver_table: str
+    # Minimum expected rows for a valid payload. A 200-OK response with
+    # fewer rows than this is treated as a confirmed gap, not a success.
+    # Override per source (e.g. bhavcopy ~1800 rows/day, set min_rows=100).
+    min_rows: int = 1
 
     def __init__(self, lakehouse: Lakehouse) -> None:
         self.lakehouse = lakehouse
@@ -124,7 +126,7 @@ class Source(ABC):
         resp = self._http_get(url)
         body = resp.content
         raw_hash = hashlib.sha256(body).hexdigest()
-        fetched_at = datetime.now(timezone.utc).isoformat()
+        fetched_at = datetime.now(UTC).isoformat()
 
         raw_path.write_bytes(body)
         meta_path.write_text(
@@ -168,6 +170,23 @@ class Source(ABC):
             )
             return ValidationReport(self.name, raw.date, 0, issues)
 
+        # Row-count sanity check: a 200-OK with an empty or truncated body
+        # must be treated as a confirmed gap, not pass through as valid.
+        if len(df) < self.min_rows:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    column=None,
+                    check_name="min_rows",
+                    rows_affected=len(df),
+                    message=(
+                        f"Parsed {len(df)} rows, expected >= {self.min_rows}. "
+                        f"Likely truncated or garbage response."
+                    ),
+                )
+            )
+            return ValidationReport(self.name, raw.date, len(df), issues)
+
         try:
             self.schema.validate(df, lazy=True)
         except SchemaError as e:
@@ -192,9 +211,7 @@ class Source(ABC):
     def land(self, raw: RawPayload, force: bool = False) -> pl.DataFrame:
         """Parse into typed Polars frame, write to bronze Parquet."""
         if not force and self.lakehouse.bronze_exists(self.name, self.silver_table, raw.date):
-            raise FileExistsError(
-                f"Bronze file already exists for {self.name} on {raw.date}"
-            )
+            raise FileExistsError(f"Bronze file already exists for {self.name} on {raw.date}")
 
         df = self._parse(raw)
         self.lakehouse.write_bronze(self.name, self.silver_table, df, raw.date, force=force)
@@ -214,7 +231,7 @@ class Source(ABC):
         df = df.with_columns(
             [
                 pl.lit(self.name).alias("source"),
-                pl.lit(datetime.now(timezone.utc).isoformat()).alias("ingested_at"),
+                pl.lit(datetime.now(UTC).isoformat()).alias("ingested_at"),
                 pl.lit(raw.raw_hash).alias("raw_hash"),
                 pl.lit(target_date.year).alias("year"),
             ]
@@ -224,27 +241,23 @@ class Source(ABC):
 
         # Record data quality
         run_id = str(uuid.uuid4())
-        null_counts = {
-            col: df[col].null_count() for col in df.columns if df[col].null_count() > 0
-        }
+        null_counts = {col: df[col].null_count() for col in df.columns if df[col].null_count() > 0}
         quality_record = {
             "source": self.name,
             "run_id": run_id,
-            "run_date": datetime.now(timezone.utc).isoformat(),
+            "run_date": datetime.now(UTC).isoformat(),
             "target_date": target_date.isoformat(),
             "row_count": len(df),
             "null_counts_json": json.dumps(null_counts),
             "validation_failures": report.error_count + report.warning_count,
             "date_gaps_json": "[]",  # Computed later across a range
-            "ingested_at": datetime.now(timezone.utc).isoformat(),
+            "ingested_at": datetime.now(UTC).isoformat(),
         }
         self.lakehouse.write_quality_log(quality_record)
 
     def run(self, target_date: date, *, force: bool = False) -> ValidationReport:
         """Execute full pipeline for one date."""
-        if not force and self.lakehouse.bronze_exists(
-            self.name, self.silver_table, target_date
-        ):
+        if not force and self.lakehouse.bronze_exists(self.name, self.silver_table, target_date):
             logger.info("run_skip_exists", source=self.name, date=target_date)
             # Fetch from cache to validate and report
             raw = self.fetch(target_date)
