@@ -1,13 +1,13 @@
 """Corporate action adjustments for historical price and volume data.
 
 Applies cumulative adjustments backwards in time so that historical prices
-are comparable to the end date of the requested range.
+are comparable to the end date of the requested range. Uses pandas.
 """
 
 from datetime import date
 from typing import Any, Literal
 
-import polars as pl
+import pandas as pd
 import structlog
 
 from indiquant.store.lakehouse import Lakehouse
@@ -21,12 +21,17 @@ def adjusted_prices(
     start: date,
     end: date,
     adjust_for: list[Literal["split", "bonus", "dividend"]] | None = None,
-) -> pl.DataFrame:
+) -> pd.DataFrame:
     """Get price and volume data adjusted for corporate actions.
 
     Adjustments are computed relative to the `end` date. A price on date T
     is multiplied by the cumulative product of all adjustment factors that
     went ex-date between T (exclusive) and end (inclusive).
+    
+    Generates two series of adjustments:
+    - Technical (split/bonus only) applied to open/high/low/close/volume.
+    - Total Return (split/bonus/dividend) applied only to a separate 
+      `adj_tot_close` column for benchmark tracking.
 
     Args:
         lakehouse: Lakehouse instance.
@@ -39,15 +44,14 @@ def adjusted_prices(
     Returns:
         DataFrame with adjusted OHLCV. Columns:
         isin, date, open, high, low, close, volume,
-        adj_open, adj_high, adj_low, adj_close, adj_volume
+        adj_open, adj_high, adj_low, adj_close, adj_tot_close, adj_volume
     """
     if adjust_for is None:
         adjust_for = ["split", "bonus", "dividend"]
 
     if not isins:
-        return pl.DataFrame()
+        return pd.DataFrame()
 
-    # 1. Fetch raw daily prices
     eq_path = (lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
     isin_list = "'" + "','".join(isins) + "'"
 
@@ -60,14 +64,14 @@ def adjusted_prices(
     """
     try:
         with lakehouse.connection() as cur:
-            df = cur.execute(query).pl()
+            df = cur.execute(query).df()
     except Exception:
-        return pl.DataFrame()
+        return pd.DataFrame()
 
-    if len(df) == 0:
+    if df.empty:
         return df
 
-    # 2. Fetch corporate actions
+    # Fetch corporate actions
     ca_path = (lakehouse.silver_dir / "corporate_actions" / "**/*.parquet").as_posix()
     ca_query = f"""
     SELECT isin, ex_date, action_type, ratio_from, ratio_to, amount_per_share
@@ -78,142 +82,113 @@ def adjusted_prices(
     """
     try:
         with lakehouse.connection() as cur:
-            ca_df = cur.execute(ca_query).pl()
+            ca_df = cur.execute(ca_query).df()
     except Exception:
-        ca_df = pl.DataFrame(
-            schema={
-                "isin": pl.Utf8,
-                "ex_date": pl.Utf8,
-                "action_type": pl.Utf8,
-                "ratio_from": pl.Float64,
-                "ratio_to": pl.Float64,
-                "amount_per_share": pl.Float64,
-            }
-        )
+        ca_df = pd.DataFrame(columns=[
+            "isin", "ex_date", "action_type", "ratio_from", "ratio_to", "amount_per_share"
+        ])
 
-    if len(ca_df) == 0 or not adjust_for:
+    if ca_df.empty or not adjust_for:
         return _add_unadjusted_columns(df)
 
-    ca_df = ca_df.filter(pl.col("action_type").is_in(adjust_for))
-    if len(ca_df) == 0:
+    ca_df = ca_df[ca_df["action_type"].isin(adjust_for)]
+    if ca_df.empty:
         return _add_unadjusted_columns(df)
 
-    # 3. Compute adjustment multipliers for each ex-date
-    df_sorted = df.sort(["isin", "date"])
-
+    df_sorted = df.sort_values(["isin", "date"]).reset_index(drop=True)
+    
     # Get prev_close for each date
-    df_prev = df_sorted.with_columns(pl.col("close").shift(1).over("isin").alias("prev_close"))
+    df_sorted["prev_close"] = df_sorted.groupby("isin")["close"].shift(1)
 
-    ca_joined = ca_df.join(
-        df_prev.select(["isin", "date", "prev_close"]),
+    ca_joined = pd.merge(
+        ca_df,
+        df_sorted[["isin", "date", "prev_close"]],
         left_on=["isin", "ex_date"],
         right_on=["isin", "date"],
         how="left",
     )
 
     multipliers: list[dict[str, Any]] = []
-    for row in ca_joined.to_dicts():
+    for _, row in ca_joined.iterrows():
+        p_mult, div_mult = _calc_price_mults(row)
         multipliers.append(
             {
                 "isin": row["isin"],
                 "date": row["ex_date"],
-                "p_mult": _calc_price_mult(row),
+                "tech_mult": p_mult,
+                "tot_mult": p_mult * div_mult,
                 "v_mult": _calc_vol_mult(row),
             }
         )
 
-    mult_df = pl.DataFrame(multipliers)
+    mult_df = pd.DataFrame(multipliers)
+    
+    if not mult_df.empty:
+        # Aggregate multiple CA on the same day
+        mult_df = mult_df.groupby(["isin", "date"], as_index=False).prod()
 
-    # Aggregate multiple CA on the same day (e.g. split + dividend)
-    mult_df = mult_df.group_by(["isin", "date"]).agg(
-        pl.col("p_mult").product(), pl.col("v_mult").product()
-    )
+    df_adj = pd.merge(df_sorted, mult_df, on=["isin", "date"], how="left")
+    df_adj["tech_mult"] = df_adj["tech_mult"].fillna(1.0)
+    df_adj["tot_mult"] = df_adj["tot_mult"].fillna(1.0)
+    df_adj["v_mult"] = df_adj["v_mult"].fillna(1.0)
 
-    df_adj = df_sorted.join(mult_df, on=["isin", "date"], how="left")
-    df_adj = df_adj.with_columns(
-        [
-            pl.col("p_mult").fill_null(1.0),
-            pl.col("v_mult").fill_null(1.0),
-        ]
-    )
+    # Cumulative product backwards
+    # Reverse sort
+    df_adj = df_adj.sort_values(["isin", "date"], ascending=[True, False]).reset_index(drop=True)
+    
+    df_adj["tech_cum"] = df_adj.groupby("isin")["tech_mult"].cumprod().shift(1).fillna(1.0)
+    df_adj["tot_cum"] = df_adj.groupby("isin")["tot_mult"].cumprod().shift(1).fillna(1.0)
+    df_adj["v_cum"] = df_adj.groupby("isin")["v_mult"].cumprod().shift(1).fillna(1.0)
+    
+    # Sort back to chronological
+    df_adj = df_adj.sort_values(["isin", "date"]).reset_index(drop=True)
 
-    # 4. Cumulative product backwards
-    # Reverse sort by date, compute cumprod, shift 1, then fill_null(1.0).
-    df_adj = df_adj.sort(["isin", "date"], descending=[False, True])
+    df_adj["adj_open"] = df_adj["open"] * df_adj["tech_cum"]
+    df_adj["adj_high"] = df_adj["high"] * df_adj["tech_cum"]
+    df_adj["adj_low"] = df_adj["low"] * df_adj["tech_cum"]
+    df_adj["adj_close"] = df_adj["close"] * df_adj["tech_cum"]
+    df_adj["adj_tot_close"] = df_adj["close"] * df_adj["tot_cum"]
+    df_adj["adj_volume"] = (df_adj["volume"] * df_adj["v_cum"]).astype("Int64")
 
-    df_adj = df_adj.with_columns(
-        [
-            pl.col("p_mult").cum_prod().over("isin").shift(1).fill_null(1.0).alias("p_cum"),
-            pl.col("v_mult").cum_prod().over("isin").shift(1).fill_null(1.0).alias("v_cum"),
-        ]
-    )
-
-    df_adj = df_adj.sort(["isin", "date"])
-
-    df_adj = df_adj.with_columns(
-        [
-            (pl.col("open") * pl.col("p_cum")).alias("adj_open"),
-            (pl.col("high") * pl.col("p_cum")).alias("adj_high"),
-            (pl.col("low") * pl.col("p_cum")).alias("adj_low"),
-            (pl.col("close") * pl.col("p_cum")).alias("adj_close"),
-            (pl.col("volume") * pl.col("v_cum")).cast(pl.Int64).alias("adj_volume"),
-        ]
-    )
-
-    return df_adj.select(
-        [
-            "isin",
-            "date",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "adj_open",
-            "adj_high",
-            "adj_low",
-            "adj_close",
-            "adj_volume",
-        ]
-    )
+    cols = [
+        "isin", "date", "open", "high", "low", "close", "volume",
+        "adj_open", "adj_high", "adj_low", "adj_close", "adj_tot_close", "adj_volume"
+    ]
+    return df_adj[cols]
 
 
-def _add_unadjusted_columns(df: pl.DataFrame) -> pl.DataFrame:
-    return df.with_columns(
-        [
-            pl.col("open").alias("adj_open"),
-            pl.col("high").alias("adj_high"),
-            pl.col("low").alias("adj_low"),
-            pl.col("close").alias("adj_close"),
-            pl.col("volume").alias("adj_volume"),
-        ]
-    ).sort(["isin", "date"])
+def _add_unadjusted_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["adj_open"] = df["open"]
+    df["adj_high"] = df["high"]
+    df["adj_low"] = df["low"]
+    df["adj_close"] = df["close"]
+    df["adj_tot_close"] = df["close"]
+    df["adj_volume"] = df["volume"].astype("Int64")
+    return df.sort_values(["isin", "date"]).reset_index(drop=True)
 
 
-def _calc_price_mult(row: dict[str, Any]) -> float:
+def _calc_price_mults(row: pd.Series) -> tuple[float, float]:
+    """Calculate (technical_multiplier, dividend_multiplier)."""
     action = row["action_type"]
     if action == "split":
-        return float(row["ratio_to"] / row["ratio_from"]) if row["ratio_from"] else 1.0
+        return float(row["ratio_to"] / row["ratio_from"]) if row["ratio_from"] else 1.0, 1.0
     elif action == "bonus":
         total = row["ratio_from"] + row["ratio_to"]
-        return float(row["ratio_to"] / total) if total else 1.0
+        return float(row["ratio_to"] / total) if total else 1.0, 1.0
     elif action == "dividend":
         prev_close = row["prev_close"]
         div = row["amount_per_share"]
-        if prev_close and prev_close > 0 and div:
-            return float(max(0.0, (prev_close - div) / prev_close))
-        return 1.0
-    return 1.0
+        if pd.notnull(prev_close) and prev_close > 0 and pd.notnull(div):
+            return 1.0, float(max(0.0, (prev_close - div) / prev_close))
+        return 1.0, 1.0
+    return 1.0, 1.0
 
 
-def _calc_vol_mult(row: dict[str, Any]) -> float:
+def _calc_vol_mult(row: pd.Series) -> float:
     action = row["action_type"]
     if action == "split":
         return float(row["ratio_from"] / row["ratio_to"]) if row["ratio_to"] else 1.0
     elif action == "bonus":
-        return (
-            float((row["ratio_from"] + row["ratio_to"]) / row["ratio_to"])
-            if row["ratio_to"]
-            else 1.0
-        )
+        return float((row["ratio_from"] + row["ratio_to"]) / row["ratio_to"]) if row["ratio_to"] else 1.0
     return 1.0

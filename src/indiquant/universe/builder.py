@@ -25,6 +25,7 @@ class UniverseMember:
     isin: str
     delisting_date: date | None
     terminal_haircut: float | None
+    delisting_reason: str = "unknown"
 
 
 @dataclass
@@ -35,6 +36,7 @@ class UniverseSnapshot:
     index_name: str
     members: list[UniverseMember]
     audit_trail: dict[str, str]  # ISIN -> Rejection Reason
+    flags_status: dict[str, str]  # System status checks (e.g. {"asm_gsm": "unchecked"})
 
 
 def build_universe(
@@ -70,7 +72,13 @@ def build_universe(
     base_isins = constituents(index_name, asof, lakehouse)
     if not base_isins:
         logger.warning("universe_empty_base", index=index_name, asof=asof.isoformat())
-        return UniverseSnapshot(asof=asof, index_name=index_name, members=[], audit_trail={})
+        return UniverseSnapshot(
+            asof=asof, 
+            index_name=index_name, 
+            members=[], 
+            audit_trail={},
+            flags_status={},
+        )
 
     # 2. Liquidity screening
     liq_res = screen_liquidity(
@@ -104,6 +112,7 @@ def build_universe(
                 isin=isin,
                 delisting_date=info.get("delisting_date"),
                 terminal_haircut=info.get("haircut"),
+                delisting_reason=info.get("delisting_reason", "unknown"),
             )
         )
 
@@ -120,4 +129,5 @@ def build_universe(
         index_name=index_name,
         members=members,
         audit_trail=audit_trail,
+        flags_status=flag_res.status,
     )

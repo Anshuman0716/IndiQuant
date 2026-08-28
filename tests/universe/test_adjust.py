@@ -74,17 +74,17 @@ def test_split_adjustment(tmp_lakehouse: Lakehouse) -> None:
     
     assert len(df) == 3
     # Pre-split date (13th)
-    row_13 = df.filter(pl.col("date") == "2024-05-13").row(0, named=True)
+    row_13 = df[df["date"] == "2024-05-13"].iloc[0]
     assert row_13["adj_close"] == 20.0
     assert row_13["adj_volume"] == 5000
     
     # Pre-split date (14th)
-    row_14 = df.filter(pl.col("date") == "2024-05-14").row(0, named=True)
+    row_14 = df[df["date"] == "2024-05-14"].iloc[0]
     assert row_14["adj_close"] == 20.0
     assert row_14["adj_volume"] == 5000
 
     # Post-split date (15th) -> factor is 1.0
-    row_15 = df.filter(pl.col("date") == "2024-05-15").row(0, named=True)
+    row_15 = df[df["date"] == "2024-05-15"].iloc[0]
     assert row_15["adj_close"] == 20.0
     assert row_15["adj_volume"] == 5000
 
@@ -124,6 +124,6 @@ def test_bonus_adjustment(tmp_lakehouse: Lakehouse) -> None:
     )
     
     assert len(df) == 2
-    row_14 = df.filter(pl.col("date") == "2024-05-14").row(0, named=True)
+    row_14 = df[df["date"] == "2024-05-14"].iloc[0]
     assert row_14["adj_close"] == 40.0
     assert row_14["adj_volume"] == 2500

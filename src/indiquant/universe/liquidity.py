@@ -2,13 +2,14 @@
 
 Computes rolling metrics like 60-day median turnover and enforces gates
 for price, listing days, and minimum turnover to avoid microcap anomalies.
+Uses pandas.
 """
 
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 import duckdb
-import polars as pl
+import pandas as pd
 import structlog
 
 from indiquant.store.lakehouse import Lakehouse
@@ -19,7 +20,6 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class LiquidityResult:
     """Result of liquidity screening."""
-
     passed: list[str]
     rejected: dict[str, str]  # ISIN -> Reason for rejection
 
@@ -52,11 +52,10 @@ def screen_liquidity(
 
     # We need at least `window` trading days. A safe calendar buffer is ~1.5x.
     start_date = asof - timedelta(days=int(window * 1.5) + 30)
-
+    
     isin_list = "'" + "','".join(isins) + "'"
     eq_path = (lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
 
-    # Query the last `window` rows per ISIN up to `asof`.
     query = f"""
     WITH ranked AS (
         SELECT isin, date, close, volume,
@@ -74,36 +73,39 @@ def screen_liquidity(
     FROM ranked
     WHERE _rn <= {window}
     """
-
+    
     try:
         with lakehouse.connection() as cur:
-            df = cur.execute(query).pl()
+            df = cur.execute(query).df()
     except duckdb.IOException:
         # Table missing
-        return LiquidityResult(passed=[], rejected={i: "no_data" for i in isins})
+        return LiquidityResult(
+            passed=[],
+            rejected={i: "no_data" for i in isins}
+        )
 
-    if len(df) == 0:
-        return LiquidityResult(passed=[], rejected={i: "no_data" for i in isins})
+    if df.empty:
+        return LiquidityResult(
+            passed=[],
+            rejected={i: "no_data" for i in isins}
+        )
 
     # Compute aggregates per ISIN
-    agg = df.group_by("isin").agg(
-        [
-            pl.len().alias("listing_days"),
-            pl.col("close").median().alias("median_price"),
-            pl.col("turnover").median().alias("median_turnover"),
-        ]
-    )
+    agg = df.groupby("isin").agg(
+        listing_days=("close", "count"),
+        median_price=("close", "median"),
+        median_turnover=("turnover", "median"),
+    ).reset_index()
 
     passed = []
     rejected = {}
-
-    # We must also account for ISINs that had zero rows returned
-    found_isins = set(agg["isin"].to_list())
+    
+    found_isins = set(agg["isin"].tolist())
     for isin in isins:
         if isin not in found_isins:
             rejected[isin] = "no_data"
 
-    for row in agg.iter_rows(named=True):
+    for _, row in agg.iterrows():
         isin = str(row["isin"])
         days = int(row["listing_days"])
         price = float(row["median_price"])

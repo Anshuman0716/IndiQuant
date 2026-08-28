@@ -87,17 +87,37 @@ class Lakehouse:
         table_dir.mkdir(parents=True, exist_ok=True)
 
         with self.connection() as cur:
-            cur.execute(
-                f"""
-                COPY (SELECT * FROM df)
-                TO '{table_dir.as_posix()}' (
-                    FORMAT PARQUET,
-                    PARTITION_BY (year),
-                    OVERWRITE_OR_IGNORE 1,
-                    COMPRESSION ZSTD
-                );
-                """
-            )
+            import tempfile
+            import shutil
+            
+            # Atomic swap: Write to a temp directory, then replace the existing partition dir
+            tmp_dir = Path(tempfile.mkdtemp(prefix="indiquant_write_"))
+            
+            try:
+                cur.execute(
+                    f"""
+                    COPY (SELECT * FROM df)
+                    TO '{tmp_dir.as_posix()}' (
+                        FORMAT PARQUET,
+                        PARTITION_BY (year),
+                        OVERWRITE_OR_IGNORE 1,
+                        COMPRESSION ZSTD
+                    );
+                    """
+                )
+                
+                # The output will be in tmp_dir/year={year}/data.parquet
+                src_partition = tmp_dir / f"year={year}"
+                if src_partition.exists():
+                    import os
+                    target_partition = table_dir / f"year={year}"
+                    # Remove target partition if it exists (os.replace needs it gone on Windows for dirs)
+                    if target_partition.exists():
+                        shutil.rmtree(target_partition, ignore_errors=True)
+                    # Now rename
+                    os.rename(src_partition, target_partition)
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
         return table_dir
 
     def read_table(

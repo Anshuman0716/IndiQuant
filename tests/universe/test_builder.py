@@ -67,6 +67,16 @@ def test_universe_is_survivorship_free(tmp_lakehouse: Lakehouse) -> None:
     prices.append({"isin": "INE_DEAD3", "date": "2019-01-01", "close": 10.0, "volume": 100000})
 
     _write_mock_equity(tmp_lakehouse, prices)
+    
+    # Mock nse_delisting records
+    delistings = [
+        {"isin": "INE_DEAD1", "symbol": "DEAD1", "delisting_date": "2018-01-01", "reason": "compulsory"},
+        {"isin": "INE_DEAD2", "symbol": "DEAD2", "delisting_date": "2017-01-01", "reason": "unknown"},
+        {"isin": "INE_DEAD3", "symbol": "DEAD3", "delisting_date": "2019-01-01", "reason": "merger_acquisition"},
+    ]
+    df_delist = pl.DataFrame(delistings)
+    df_delist = df_delist.with_columns(pl.lit(2016).alias("year"))
+    tmp_lakehouse.write_silver("delistings", df_delist, year=2016)
 
     # Build universe
     snap = build_universe(
@@ -84,8 +94,11 @@ def test_universe_is_survivorship_free(tmp_lakehouse: Lakehouse) -> None:
     delisted = [m for m in snap.members if m.delisting_date is not None]
     assert len(delisted) == 3, f"Expected 3 delisted names, found {len(delisted)}"
     
-    # Ensure they got haircuts
+    # Ensure they got haircuts (except M&A)
     for d in delisted:
-        assert d.terminal_haircut == -0.30
+        if d.delisting_reason == "merger_acquisition":
+            assert d.terminal_haircut == 0.0
+        else:
+            assert d.terminal_haircut == -0.30
 
     print(f"Test passed! Found {len(delisted)} delisted names: {[d.isin for d in delisted]}")

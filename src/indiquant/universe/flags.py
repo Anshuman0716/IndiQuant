@@ -6,7 +6,9 @@ suspended trading, or F&O ban.
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
+import duckdb
 import structlog
 
 from indiquant.store.lakehouse import Lakehouse
@@ -17,9 +19,9 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class FlagResult:
     """Result of flag screening."""
-
     passed: list[str]
     rejected: dict[str, str]  # ISIN -> Reason for rejection
+    status: dict[str, Any]  # Explicit check statuses e.g. {"asm": "unchecked"}
 
 
 def screen_flags(
@@ -43,21 +45,23 @@ def screen_flags(
         exclude_fo_ban: Exclude securities in F&O ban period.
 
     Returns:
-        FlagResult with passed ISINs and rejection reasons.
+        FlagResult with passed ISINs, rejection reasons, and explicit status dict.
     """
     if not isins:
-        return FlagResult(passed=[], rejected={})
+        return FlagResult(passed=[], rejected={}, status={})
 
-    # TODO: Implement robust checks when the specific source files
+    # TODO: Implement robust checks when the specific source files 
     # (MWPL for F&O ban, Surveillance lists for ASM/GSM, series data for T2T)
     # are fully integrated into the lakehouse silver layer.
-
-    passed = []
+    
+    status = {
+        "t2t": "unchecked",
+        "asm_gsm": "unchecked",
+        "suspended": "unchecked",
+        "fo_ban": "unchecked",
+    }
+    
+    passed = list(isins)
     rejected: dict[str, str] = {}
 
-    # Placeholder: currently passes all ISINs until the underlying
-    # surveillance and MWPL sources are added to Phase 1 ingestion.
-    for isin in isins:
-        passed.append(isin)
-
-    return FlagResult(passed=passed, rejected=rejected)
+    return FlagResult(passed=passed, rejected=rejected, status=status)
