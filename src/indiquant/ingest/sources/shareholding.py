@@ -103,6 +103,7 @@ class ShareholdingSource(Source):
         )
 
         import duckdb
+
         try:
             with self.lakehouse.connection() as cur:
                 eq_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()

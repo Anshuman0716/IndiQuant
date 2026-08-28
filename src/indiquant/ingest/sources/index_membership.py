@@ -237,12 +237,13 @@ class IndexMembershipSource(Source):
 
         # Resolve ISINs via symbol_isin_map
         import duckdb
+
         try:
             with self.lakehouse.connection() as cur:
                 # We need to map (symbol, valid_from) to ISIN
-                # This uses the lakehouse's equity_daily table. If it's missing, it catches IOException.
+                # This uses the lakehouse's equity_daily table. Catches IOException if missing.
                 eq_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
-                
+
                 # Fetch distinct symbol/isin/date from equity_daily
                 mapping_query = f"""
                 WITH mapping AS (
@@ -259,15 +260,15 @@ class IndexMembershipSource(Source):
                  AND i.valid_from <= m.last_seen
                 """
                 mapped_df = cur.execute(mapping_query).pl()
-                
+
                 # Handle cases where multiple ISINs might match due to symbol reuse overlapping
                 # We group by index_name, symbol, valid_from and take the first one
                 return mapped_df.group_by(["index_name", "symbol", "valid_from"]).first()
         except duckdb.IOException:
-            # equity_daily might not exist yet, fallback to empty ISINs (will need re-run later)
+            # equity_daily might not exist yet, fallback to empty ISINs
             logger.warning(
                 "index_membership_isin_resolution_failed",
-                msg="equity_daily not found. ISINs left blank. Rerun index_membership after equity_daily."
+                msg="equity_daily not found. Rerun index_membership after equity_daily.",
             )
             return int_df
 
