@@ -108,7 +108,7 @@ class IndexMembershipSource(Source):
                 msg="Could not identify required columns",
             )
             return pl.DataFrame()
-            
+
         assert index_col is not None
         assert date_col is not None
         assert symbol_col is not None

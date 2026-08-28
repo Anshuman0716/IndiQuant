@@ -492,7 +492,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "duckdb", specifier = ">=1.0.0" },
+    { name = "duckdb", specifier = ">=0.9" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.110.0" },
     { name = "httpx", marker = "extra == 'ingest'", specifier = ">=0.27.0" },
     { name = "numpy", marker = "extra == 'research'", specifier = ">=2.0.0" },

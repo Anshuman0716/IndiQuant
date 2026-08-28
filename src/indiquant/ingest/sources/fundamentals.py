@@ -122,6 +122,19 @@ class FundamentalsSource(Source):
                 )
             )
 
+        # Uniqueness check on (symbol, result_date) to prevent duplicates reaching as_known_on
+        duplicates = df.group_by(["symbol", "result_date"]).len().filter(pl.col("len") > 1)
+        if len(duplicates) > 0:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    column="symbol",
+                    check_name="unique_symbol_knowledge_date",
+                    rows_affected=len(duplicates),
+                    message=f"Found {len(duplicates)} duplicate (symbol, result_date) pairs",
+                )
+            )
+
         return issues
 
     def _promote_transform(self, bronze: pl.DataFrame) -> pl.DataFrame:

@@ -92,7 +92,7 @@ def backfill(
         sources_to_run = list(all_sources.values())
 
     typer.echo(
-        f"Backfill: {from_date.date()} → {to_date.date()}, "
+        f"Backfill: {from_date.date()} to {to_date.date()}, "
         f"sources={[s.name for s in sources_to_run]}, mode={mode.value}"
     )
 

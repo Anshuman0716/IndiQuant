@@ -144,6 +144,19 @@ class ShareholdingSource(Source):
                 )
             )
 
+        # Uniqueness check on (symbol, filing_date)
+        duplicates = df.group_by(["symbol", "filing_date"]).len().filter(pl.col("len") > 1)
+        if len(duplicates) > 0:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    column="symbol",
+                    check_name="unique_symbol_knowledge_date",
+                    rows_affected=len(duplicates),
+                    message=f"Found {len(duplicates)} duplicate (symbol, filing_date) pairs",
+                )
+            )
+
         return issues
 
     def _promote_transform(self, bronze: pl.DataFrame) -> pl.DataFrame:

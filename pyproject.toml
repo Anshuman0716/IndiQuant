@@ -5,7 +5,7 @@ description = "Systematic research and backtesting platform for Indian equities"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "duckdb>=1.0.0",
+    "duckdb>=0.9", # ASOF JOIN requires duckdb >= 0.9
     "pandera[polars]>=0.21",
     "pyarrow>=25.0.1",
     "pydantic-settings>=2.0.0",

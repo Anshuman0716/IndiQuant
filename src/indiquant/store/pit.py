@@ -97,3 +97,92 @@ def as_known_on(
         )
 
     return df
+
+
+def index_constituents(
+    lakehouse: Lakehouse,
+    index_name: str,
+    asof: date,
+) -> list[str]:
+    """Return the ISINs constituting an index on a specific date.
+
+    Enforces interval point-in-time constraints.
+    Interval bounds: valid_from <= asof < valid_to.
+
+    Args:
+        lakehouse: Lakehouse instance.
+        index_name: Index name (e.g. 'NIFTY 500').
+        asof: The point-in-time date.
+
+    Returns:
+        List of ISINs.
+    """
+    logger.debug(
+        "executing_index_constituents_query",
+        index=index_name,
+        asof=asof.isoformat(),
+    )
+
+    table_path = (lakehouse.silver_dir / "index_membership" / "**/*.parquet").as_posix()
+
+    query = f"""
+    SELECT isin
+    FROM read_parquet(
+        '{table_path}',
+        hive_partitioning = true,
+        union_by_name = true
+    )
+    WHERE index_name = $index
+      AND valid_from <= $asof
+      AND (valid_to IS NULL OR valid_to > $asof)
+    """
+
+    try:
+        with lakehouse.connection() as cur:
+            df = cur.execute(query, {"index": index_name, "asof": asof.isoformat()}).df()
+            return df["isin"].tolist()
+    except duckdb.IOException:
+        return []
+
+
+def is_index_member(
+    lakehouse: Lakehouse,
+    isin: str,
+    index_name: str,
+    asof: date,
+) -> bool:
+    """Check if an ISIN was part of an index on a specific date.
+
+    Args:
+        lakehouse: Lakehouse instance.
+        isin: The ISIN to check.
+        index_name: Index name.
+        asof: The point-in-time date.
+
+    Returns:
+        True if the ISIN was a member on the given date, False otherwise.
+    """
+    table_path = (lakehouse.silver_dir / "index_membership" / "**/*.parquet").as_posix()
+
+    query = f"""
+    SELECT 1
+    FROM read_parquet(
+        '{table_path}',
+        hive_partitioning = true,
+        union_by_name = true
+    )
+    WHERE index_name = $index
+      AND isin = $isin
+      AND valid_from <= $asof
+      AND (valid_to IS NULL OR valid_to > $asof)
+    LIMIT 1
+    """
+
+    try:
+        with lakehouse.connection() as cur:
+            df = cur.execute(
+                query, {"index": index_name, "isin": isin, "asof": asof.isoformat()}
+            ).df()
+            return not df.empty
+    except duckdb.IOException:
+        return False
