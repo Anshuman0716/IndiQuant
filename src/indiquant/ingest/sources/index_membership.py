@@ -233,7 +233,43 @@ class IndexMembershipSource(Source):
         if not intervals:
             return pl.DataFrame()
 
-        return pl.DataFrame(intervals)
+        int_df = pl.DataFrame(intervals)
+
+        # Resolve ISINs via symbol_isin_map
+        import duckdb
+        try:
+            with self.lakehouse.connection() as cur:
+                # We need to map (symbol, valid_from) to ISIN
+                # This uses the lakehouse's equity_daily table. If it's missing, it catches IOException.
+                eq_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
+                
+                # Fetch distinct symbol/isin/date from equity_daily
+                mapping_query = f"""
+                WITH mapping AS (
+                    SELECT isin, symbol, MIN(date) as first_seen, MAX(date) as last_seen
+                    FROM read_parquet('{eq_path}', hive_partitioning = true, union_by_name = true)
+                    GROUP BY isin, symbol
+                )
+                SELECT i.index_name, i.symbol, i.valid_from, i.valid_to, i.knowledge_date,
+                       COALESCE(m.isin, '') AS isin
+                FROM int_df i
+                LEFT JOIN mapping m
+                  ON i.symbol = m.symbol
+                 AND i.valid_from >= m.first_seen
+                 AND i.valid_from <= m.last_seen
+                """
+                mapped_df = cur.execute(mapping_query).pl()
+                
+                # Handle cases where multiple ISINs might match due to symbol reuse overlapping
+                # We group by index_name, symbol, valid_from and take the first one
+                return mapped_df.group_by(["index_name", "symbol", "valid_from"]).first()
+        except duckdb.IOException:
+            # equity_daily might not exist yet, fallback to empty ISINs (will need re-run later)
+            logger.warning(
+                "index_membership_isin_resolution_failed",
+                msg="equity_daily not found. ISINs left blank. Rerun index_membership after equity_daily."
+            )
+            return int_df
 
 
 def _find_column(df: pl.DataFrame, candidates: list[str]) -> str | None:

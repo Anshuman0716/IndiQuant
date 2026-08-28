@@ -91,10 +91,9 @@ class FundamentalsSource(Source):
             ]
         )
 
-        return df.select(
+        parsed_df = df.select(
             [
                 "symbol",
-                "isin",
                 "quarter_end",
                 "result_date",
                 "revenue",
@@ -103,6 +102,30 @@ class FundamentalsSource(Source):
                 "face_value",
             ]
         )
+
+        import duckdb
+        try:
+            with self.lakehouse.connection() as cur:
+                eq_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
+                mapping_query = f"""
+                WITH mapping AS (
+                    SELECT isin, symbol, MIN(date) as first_seen, MAX(date) as last_seen
+                    FROM read_parquet('{eq_path}', hive_partitioning = true, union_by_name = true)
+                    GROUP BY isin, symbol
+                )
+                SELECT p.*, COALESCE(m.isin, '') AS isin
+                FROM parsed_df p
+                LEFT JOIN mapping m
+                  ON p.symbol = m.symbol
+                 AND p.result_date >= m.first_seen
+                 AND p.result_date <= m.last_seen
+                """
+                mapped_df = cur.execute(mapping_query).pl()
+                # Deduplicate if overlapping reuses
+                return mapped_df.group_by(["symbol", "result_date"]).first()
+        except duckdb.IOException:
+            # Fallback if equity_daily doesn't exist
+            return parsed_df.with_columns(pl.lit("").alias("isin"))
 
     def _validate_rules(self, df: pl.DataFrame) -> list[ValidationIssue]:
         """Validate reasonable EPS values."""
@@ -122,16 +145,16 @@ class FundamentalsSource(Source):
                 )
             )
 
-        # Uniqueness check on (symbol, result_date) to prevent duplicates reaching as_known_on
-        duplicates = df.group_by(["symbol", "result_date"]).len().filter(pl.col("len") > 1)
+        # Uniqueness check on (isin, result_date) to prevent duplicates reaching as_known_on
+        duplicates = df.group_by(["isin", "result_date"]).len().filter(pl.col("len") > 1)
         if len(duplicates) > 0:
             issues.append(
                 ValidationIssue(
                     severity="error",
-                    column="symbol",
-                    check_name="unique_symbol_knowledge_date",
+                    column="isin",
+                    check_name="unique_isin_knowledge_date",
                     rows_affected=len(duplicates),
-                    message=f"Found {len(duplicates)} duplicate (symbol, result_date) pairs",
+                    message=f"Found {len(duplicates)} duplicate (isin, result_date) pairs",
                 )
             )
 

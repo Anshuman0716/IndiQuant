@@ -193,7 +193,29 @@ class CorporateActionsSource(Source):
         if not records:
             return pl.DataFrame()
 
-        return pl.DataFrame(records)
+        parsed_df = pl.DataFrame(records)
+        import duckdb
+        try:
+            with self.lakehouse.connection() as cur:
+                eq_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
+                mapping_query = f"""
+                WITH mapping AS (
+                    SELECT isin, symbol, MIN(date) as first_seen, MAX(date) as last_seen
+                    FROM read_parquet('{eq_path}', hive_partitioning = true, union_by_name = true)
+                    GROUP BY isin, symbol
+                )
+                SELECT p.* EXCLUDE(isin), COALESCE(m.isin, '') AS isin
+                FROM parsed_df p
+                LEFT JOIN mapping m
+                  ON p.symbol = m.symbol
+                 AND p.ex_date >= m.first_seen
+                 AND p.ex_date <= m.last_seen
+                """
+                mapped_df = cur.execute(mapping_query).pl()
+                # Deduplicate if overlapping reuses
+                return mapped_df.group_by(["symbol", "action_type", "ex_date", "subject"]).first()
+        except duckdb.IOException:
+            return parsed_df
 
     def _validate_rules(self, df: pl.DataFrame) -> list[ValidationIssue]:
         """Validate corporate action data."""
