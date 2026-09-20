@@ -2,7 +2,6 @@ from datetime import date
 from typing import Any
 
 import polars as pl
-import pytest
 
 from indiquant.store.lakehouse import Lakehouse
 from indiquant.universe.adjust import adjusted_prices
@@ -47,10 +46,34 @@ def test_split_adjustment(tmp_lakehouse: Lakehouse) -> None:
     _write_mock_data(
         tmp_lakehouse,
         prices=[
-            {"isin": "INE123", "date": "2024-05-13", "open": 100.0, "high": 105.0, "low": 95.0, "close": 100.0, "volume": 1000},
-            {"isin": "INE123", "date": "2024-05-14", "open": 102.0, "high": 104.0, "low": 98.0, "close": 100.0, "volume": 1000},
+            {
+                "isin": "INE123",
+                "date": "2024-05-13",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000,
+            },
+            {
+                "isin": "INE123",
+                "date": "2024-05-14",
+                "open": 102.0,
+                "high": 104.0,
+                "low": 98.0,
+                "close": 100.0,
+                "volume": 1000,
+            },
             # Ex-date: price drops by 5x naturally, volume 5x naturally
-            {"isin": "INE123", "date": "2024-05-15", "open": 20.0, "high": 21.0, "low": 19.0, "close": 20.0, "volume": 5000},
+            {
+                "isin": "INE123",
+                "date": "2024-05-15",
+                "open": 20.0,
+                "high": 21.0,
+                "low": 19.0,
+                "close": 20.0,
+                "volume": 5000,
+            },
         ],
         actions=[
             {
@@ -71,13 +94,13 @@ def test_split_adjustment(tmp_lakehouse: Lakehouse) -> None:
         date(2024, 5, 15),
         adjust_for=["split"],
     )
-    
+
     assert len(df) == 3
     # Pre-split date (13th)
     row_13 = df[df["date"] == "2024-05-13"].iloc[0]
     assert row_13["adj_close"] == 20.0
     assert row_13["adj_volume"] == 5000
-    
+
     # Pre-split date (14th)
     row_14 = df[df["date"] == "2024-05-14"].iloc[0]
     assert row_14["adj_close"] == 20.0
@@ -100,8 +123,24 @@ def test_bonus_adjustment(tmp_lakehouse: Lakehouse) -> None:
     _write_mock_data(
         tmp_lakehouse,
         prices=[
-            {"isin": "INE456", "date": "2024-05-14", "open": 100.0, "high": 105.0, "low": 95.0, "close": 100.0, "volume": 1000},
-            {"isin": "INE456", "date": "2024-05-15", "open": 40.0, "high": 42.0, "low": 38.0, "close": 40.0, "volume": 2500},
+            {
+                "isin": "INE456",
+                "date": "2024-05-14",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000,
+            },
+            {
+                "isin": "INE456",
+                "date": "2024-05-15",
+                "open": 40.0,
+                "high": 42.0,
+                "low": 38.0,
+                "close": 40.0,
+                "volume": 2500,
+            },
         ],
         actions=[
             {
@@ -122,7 +161,7 @@ def test_bonus_adjustment(tmp_lakehouse: Lakehouse) -> None:
         date(2024, 5, 15),
         adjust_for=["bonus"],
     )
-    
+
     assert len(df) == 2
     row_14 = df[df["date"] == "2024-05-14"].iloc[0]
     assert row_14["adj_close"] == 40.0
