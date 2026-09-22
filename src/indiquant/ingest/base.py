@@ -187,8 +187,23 @@ class Source(ABC):
             )
             return ValidationReport(self.name, raw.date, len(df), issues)
 
+        # To validate against the full Silver schema (including provenance),
+        # we apply the promotion transform and add dummy provenance.
         try:
-            self.schema.validate(df, lazy=True)
+            silver_sim = self._promote_transform(df)
+            silver_sim = silver_sim.with_columns(
+                [
+                    pl.lit(self.name).alias("source"),
+                    pl.lit("2000-01-01T00:00:00Z").alias("ingested_at"),
+                    pl.lit(raw.raw_hash).alias("raw_hash"),
+                    pl.lit(2000).alias("year"),
+                ]
+            )
+            # Ensure knowledge_date exists if not added by _promote_transform
+            if "knowledge_date" not in silver_sim.columns:
+                silver_sim = silver_sim.with_columns(pl.lit("2000-01-01").alias("knowledge_date"))
+            
+            self.schema.validate(silver_sim, lazy=True)
         except SchemaError as e:
             # We would parse the SchemaErrors here in a real impl
             issues.append(

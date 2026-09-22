@@ -165,22 +165,22 @@ class CorporateActionsSource(Source):
 
         records: list[dict[str, object]] = []
         for item in data:
-            subject = item.get("subject", "")
+            subject = item.get("subject") or ""
             parsed = _parse_subject(subject)
 
-            ex_date_str = _parse_nse_date(item.get("exDate", "-"))
+            ex_date_str = _parse_nse_date(item.get("exDate") or "-")
             if ex_date_str is None:
                 continue
 
             records.append(
                 {
-                    "symbol": item.get("symbol", "").strip(),
-                    "series": item.get("series", "EQ").strip(),
+                    "symbol": (item.get("symbol") or "").strip(),
+                    "series": (item.get("series") or "EQ").strip(),
                     "isin": "",  # Will be resolved via symbol_isin_map
                     "date": raw.date.isoformat(),
                     "ex_date": ex_date_str,
-                    "record_date": _parse_nse_date(item.get("recDate", "-")),
-                    "broadcast_date": _parse_nse_date(item.get("caBroadcastDate", "-")),
+                    "record_date": _parse_nse_date(item.get("recDate") or "-"),
+                    "broadcast_date": _parse_nse_date(item.get("caBroadcastDate") or "-"),
                     "subject": subject,
                     "action_type": parsed["action_type"],
                     "ratio_from": parsed["ratio_from"],

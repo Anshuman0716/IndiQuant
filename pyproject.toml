@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 iq = "indiquant.cli.main:app"
+bql = "indiquant.cli.main:app"
 
 [project.optional-dependencies]
 ingest = [

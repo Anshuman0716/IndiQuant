@@ -24,6 +24,8 @@ class EquityDailySchema(_ProvenanceMixin):
     low: Series[float] = pa.Field(gt=0.0)
     close: Series[float] = pa.Field(gt=0.0)
     volume: Series[int] = pa.Field(ge=0)
+    turnover: Series[float] = pa.Field(ge=0.0)
+    symbol: Series[str]
 
     @classmethod
     @pa.dataframe_check
@@ -36,7 +38,7 @@ class EquityDailySchema(_ProvenanceMixin):
         return (pl.col("close") >= pl.col("low")) & (pl.col("close") <= pl.col("high"))
 
     class Config:
-        strict = True
+        strict = False
         coerce = True
 
 

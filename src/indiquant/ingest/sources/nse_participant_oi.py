@@ -37,8 +37,22 @@ class ParticipantOiSource(Source):
 
     def _parse(self, raw: RawPayload) -> pl.DataFrame:
         """Parse the participant OI CSV."""
+        text = raw.body.decode("utf-8", errors="replace")
+        # The file has a junk title row, skip it.
+        # Sometimes there's a blank line or tabs inside the columns.
+        lines = text.split("\n")
+        # Find the line that starts with Client Type
+        header_idx = 0
+        for i, line in enumerate(lines):
+            if "Client Type" in line:
+                header_idx = i
+                break
+        
+        csv_data = "\n".join(lines[header_idx:])
+        csv_data = csv_data.replace("\t", " ")
+        
         df = pl.read_csv(
-            io.BytesIO(raw.body),
+            io.StringIO(csv_data),
             infer_schema_length=0,
             ignore_errors=True,
         )

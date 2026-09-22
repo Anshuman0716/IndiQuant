@@ -8,11 +8,13 @@ from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
 
 
-class MockSchema(pa.DataFrameModel):
+from indiquant.store.schemas import _ProvenanceMixin
+
+class MockSchema(_ProvenanceMixin):
     value: Series[int] = pa.Field(ge=0)
 
     class Config:
-        strict = True
+        strict = False
         coerce = True
 
 

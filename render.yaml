@@ -1,0 +1,38 @@
+databases:
+  - name: iq-meta
+    databaseName: iq_meta
+    user: indiquant
+    plan: free
+
+services:
+  - type: web
+    name: indiquant-api
+    env: docker
+    plan: free
+    disk:
+      name: iq-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: IQ_POSTGRES_DSN
+        fromDatabase:
+          name: iq-meta
+          property: connectionString
+      - key: IQ_DATA_DIR
+        value: /app/data
+      - key: IQ_PARQUET_DIR
+        value: /app/data/parquet
+      - key: IQ_DUCKDB_PATH
+        value: /app/data/indiquant.duckdb
+      - key: IQ_NSE_API_KEY
+        sync: false
+      - key: IQ_BSE_API_KEY
+        sync: false
+      - key: IQ_BROKER_API_KEY
+        sync: false
+      - key: IQ_BROKER_API_SECRET
+        sync: false
+      - key: IQ_SENTRY_DSN
+        sync: false
+      - key: IQ_POSTHOG_API_KEY
+        sync: false

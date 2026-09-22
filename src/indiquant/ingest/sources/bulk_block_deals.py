@@ -52,10 +52,23 @@ class BulkBlockDealsSource(Source):
         except json.JSONDecodeError:
             return pl.DataFrame()
 
-        if not data:
+        # The API returns independent lists for different deal types:
+        # e.g., 'BULK_DEALS_DATA', 'SHORT_DEALS_DATA', 'BLOCK_DEALS_DATA'
+        records = []
+        if isinstance(data, dict):
+            for key, val in data.items():
+                if isinstance(val, list) and key.endswith("_DATA"):
+                    # Add a tag for the source array if dealType is missing
+                    for row in val:
+                        row["source_array"] = key
+                        records.append(row)
+        elif isinstance(data, list):
+            records = data
+
+        if not records:
             return pl.DataFrame()
 
-        df = pl.DataFrame(data)
+        df = pl.DataFrame(records)
         if len(df) == 0:
             return df
 
@@ -64,12 +77,12 @@ class BulkBlockDealsSource(Source):
 
         # Expected fields: symbol, dealDate, clientName, dealType, quantity, tradePrice
         cols_needed = {
-            "dealDate": "date",
+            "date": "date",
             "symbol": "symbol",
-            "dealType": "deal_type",
+            "buySell": "deal_type",
             "clientName": "client_name",
-            "quantity": "quantity",
-            "tradePrice": "price",
+            "qty": "quantity",
+            "watp": "price",
         }
 
         for col in cols_needed:

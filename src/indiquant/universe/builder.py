@@ -70,7 +70,7 @@ def build_universe(
 
     # 1. Base index membership (Point in time)
     base_isins = constituents(index_name, asof, lakehouse)
-    if not base_isins:
+    if len(base_isins) == 0:
         logger.warning("universe_empty_base", index=index_name, asof=asof.isoformat())
         return UniverseSnapshot(
             asof=asof, 
@@ -83,7 +83,7 @@ def build_universe(
     # 2. Liquidity screening
     liq_res = screen_liquidity(
         lakehouse,
-        base_isins,
+        base_isins["isin"].tolist(),
         asof,
         min_price=min_price,
         min_turnover=min_turnover,

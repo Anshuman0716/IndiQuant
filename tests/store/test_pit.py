@@ -185,10 +185,12 @@ def test_interval_boundary(tmp_lakehouse: Lakehouse) -> None:
     )
 
     # Valid on day before (2024-03-31)
-    assert "INE123" in index_constituents(tmp_lakehouse, "NIFTY 50", date(2024, 3, 31))
+    df_31 = index_constituents(tmp_lakehouse, "NIFTY 50", date(2024, 3, 31))
+    assert "INE123" in df_31["isin"].values
 
     # NOT valid on end date (2024-04-01)
-    assert "INE123" not in index_constituents(tmp_lakehouse, "NIFTY 50", date(2024, 4, 1))
+    df_01 = index_constituents(tmp_lakehouse, "NIFTY 50", date(2024, 4, 1))
+    assert "INE123" not in df_01["isin"].values
 
 
 def test_delisting_eve_integration(tmp_lakehouse: Lakehouse) -> None:
@@ -213,6 +215,6 @@ def test_delisting_eve_integration(tmp_lakehouse: Lakehouse) -> None:
     # Eve of delisting: 2024-10-14 -> should be present
     eve = date(2024, 10, 14)
     constituents = index_constituents(tmp_lakehouse, "NIFTY 50", eve)
-    assert "INE_DEAD" in constituents, (
+    assert "INE_DEAD" in constituents["isin"].values, (
         "Survivorship bias detected! Delisted ISIN missing on delisting eve."
     )

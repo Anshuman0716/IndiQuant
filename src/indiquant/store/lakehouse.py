@@ -80,44 +80,35 @@ class Lakehouse:
     def write_silver(self, table: str, df: pl.DataFrame, year: int) -> Path:
         """Write to silver Parquet, partitioned by year.
 
-        Overwrites existing partition deterministically. We use DuckDB COPY
-        to handle the Hive partitioning cleanly from the Polars frame.
+        Appends a new file atomically to the partition directory.
         """
         table_dir = self.silver_dir / table
-        table_dir.mkdir(parents=True, exist_ok=True)
+        partition_dir = table_dir / f"year={year}"
+        partition_dir.mkdir(parents=True, exist_ok=True)
 
-        with self.connection() as cur:
-            import tempfile
-            import shutil
+        import uuid
+        import tempfile
+        import shutil
+        import os
+
+        # We don't need the 'year' column in the parquet file itself for hive partitioning
+        if "year" in df.columns:
+            df = df.drop("year")
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="indiquant_write_"))
+        file_id = uuid.uuid4().hex[:8]
+        tmp_file = tmp_dir / f"data_{file_id}.parquet"
+
+        try:
+            # Write to temp file
+            df.write_parquet(tmp_file, compression="zstd")
             
-            # Atomic swap: Write to a temp directory, then replace the existing partition dir
-            tmp_dir = Path(tempfile.mkdtemp(prefix="indiquant_write_"))
+            # Atomically move into partition directory
+            target_file = partition_dir / tmp_file.name
+            os.rename(tmp_file, target_file)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             
-            try:
-                cur.execute(
-                    f"""
-                    COPY (SELECT * FROM df)
-                    TO '{tmp_dir.as_posix()}' (
-                        FORMAT PARQUET,
-                        PARTITION_BY (year),
-                        OVERWRITE_OR_IGNORE 1,
-                        COMPRESSION ZSTD
-                    );
-                    """
-                )
-                
-                # The output will be in tmp_dir/year={year}/data.parquet
-                src_partition = tmp_dir / f"year={year}"
-                if src_partition.exists():
-                    import os
-                    target_partition = table_dir / f"year={year}"
-                    # Remove target partition if it exists (os.replace needs it gone on Windows for dirs)
-                    if target_partition.exists():
-                        shutil.rmtree(target_partition, ignore_errors=True)
-                    # Now rename
-                    os.rename(src_partition, target_partition)
-            finally:
-                shutil.rmtree(tmp_dir, ignore_errors=True)
         return table_dir
 
     def read_table(

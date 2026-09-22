@@ -103,7 +103,7 @@ def index_constituents(
     lakehouse: Lakehouse,
     index_name: str,
     asof: date,
-) -> list[str]:
+) -> pd.DataFrame:
     """Return the ISINs constituting an index on a specific date.
 
     Enforces interval point-in-time constraints.
@@ -140,9 +140,9 @@ def index_constituents(
     try:
         with lakehouse.connection() as cur:
             df = cur.execute(query, {"index": index_name, "asof": asof.isoformat()}).df()
-            return df["isin"].tolist()
+            return df
     except duckdb.IOException:
-        return []
+        return pd.DataFrame()
 
 
 def is_index_member(

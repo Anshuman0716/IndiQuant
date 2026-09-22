@@ -63,6 +63,7 @@ def backfill(
     from indiquant.ingest.sources.nse_fo_bhavcopy import FoBhavcopySource
     from indiquant.ingest.sources.nse_participant_oi import ParticipantOiSource
     from indiquant.ingest.sources.shareholding import ShareholdingSource
+    from indiquant.ingest.sources.nse_fundamentals_yfinance_smoke import YFinanceFundamentalsSmokeSource
     from indiquant.logging import setup_logging
     from indiquant.store.lakehouse import Lakehouse
 
@@ -81,6 +82,7 @@ def backfill(
         "nse_bulk_block_deals": BulkBlockDealsSource(lakehouse),
         "nse_shareholding": ShareholdingSource(lakehouse),
         "nse_fundamentals": FundamentalsSource(lakehouse),
+        "yfinance_smoke": YFinanceFundamentalsSmokeSource(lakehouse),
     }
 
     if source:

@@ -1,0 +1,71 @@
+name: Deploy Tapetide
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: '${{ vars.GCP_WIF_PROVIDER }}'
+          service_account: '${{ vars.GCP_DEPLOYER_SA }}'
+          
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v2'
+        
+      - name: 'Docker auth'
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev
+        
+      - name: 'Build API Image'
+        run: |
+          docker build --target api-runtime -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/tapetide-repo/api:${{ github.sha }} .
+          docker push ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/tapetide-repo/api:${{ github.sha }}
+          
+      - name: 'Deploy to Cloud Run (API)'
+        run: |
+          gcloud run deploy tapetide-api \
+            --image ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/tapetide-repo/api:${{ github.sha }} \
+            --region ${{ vars.GCP_REGION }} \
+            --service-account ${{ vars.GCP_RUNTIME_SA }} \
+            --min-instances 0 \
+            --max-instances 1 \
+            --concurrency 80 \
+            --memory 1024Mi \
+            --cpu 1 \
+            --set-secrets="SENTRY_DSN=SENTRY_DSN:latest,POSTHOG_API_KEY=POSTHOG_API_KEY:latest" \
+            --allow-unauthenticated
+
+      - name: 'Build Ingest Image'
+        run: |
+          docker build --target ingest-runtime -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/tapetide-repo/ingest:${{ github.sha }} .
+          docker push ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/tapetide-repo/ingest:${{ github.sha }}
+          
+      - name: 'Deploy Cloud Run Job (Ingest)'
+        run: |
+          gcloud run jobs update tapetide-ingest \
+            --image ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/tapetide-repo/ingest:${{ github.sha }} \
+            --region ${{ vars.GCP_REGION }} \
+            --service-account ${{ vars.GCP_RUNTIME_SA }} \
+            --memory 2048Mi \
+            --cpu 2
+            
+      - name: 'Update Cloud Scheduler (Ingest)'
+        run: |
+          gcloud scheduler jobs update http tapetide-daily-ingest \
+            --schedule="0 7 * * 1-5" \
+            --time-zone="Asia/Kolkata" \
+            --uri="https://${{ vars.GCP_REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ vars.GCP_PROJECT_ID }}/jobs/tapetide-ingest:run" \
+            --http-method POST \
+            --oauth-service-account-email="${{ vars.GCP_RUNTIME_SA }}"

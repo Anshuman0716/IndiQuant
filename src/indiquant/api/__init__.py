@@ -1,1 +1,3 @@
-"""FastAPI REST layer for strategy execution and monitoring."""
+from .app import app
+
+__all__ = ["app"]
