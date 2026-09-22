@@ -16,7 +16,9 @@ RUN pip install --no-cache-dir uv
 
 # Install dependencies first (caching layer)
 COPY pyproject.toml .
-RUN uv pip install --system -r pyproject.toml
+# Compile all dependencies (including api, ingest, research extras) into requirements.txt and install
+RUN uv pip compile pyproject.toml --all-extras -o requirements.txt && \
+    uv pip install --system -r requirements.txt
 
 # -------------------------
 # RUNTIME STAGE
