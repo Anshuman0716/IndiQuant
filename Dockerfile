@@ -36,8 +36,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY --chown=appuser:appuser src/ ./src/
 
-# Create data directory and give appuser ownership for the persistent disk
-RUN mkdir -p /app/data && chown -R appuser:appuser /app/data
+# Copy data directory (containing the DuckDB file) so it is baked into the image
+COPY --chown=appuser:appuser data/ ./data/
 
 USER appuser
 ENV PYTHONPATH=/app/src

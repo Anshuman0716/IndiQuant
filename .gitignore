@@ -12,10 +12,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# Data
-data/
-*.parquet
-*.duckdb
+# Data committed for Render free tier deployment
 
 # Secrets
 .secrets.baseline
