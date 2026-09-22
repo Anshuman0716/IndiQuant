@@ -9,10 +9,6 @@ services:
     name: indiquant-api
     env: docker
     plan: free
-    disk:
-      name: iq-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: IQ_POSTGRES_DSN
         fromDatabase:
