@@ -85,6 +85,10 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - Full Indian cost model (7 statutory charges with date-effective rates).
 - Limit order fill simulation using volume profile caps (Slippage Model).
 
+### 🔲 Phase 8 — AI Agent Integration (MCP) (WIP)
+- **Verified Working:** Stdio transport bridge successfully round-trips tool calls (e.g., `run_backtest`, `list_factors`) and enforces token budgeting via `shaping.ts`.
+- **Missing:** Remote HTTP+SSE transport with bearer auth is not yet implemented.
+
 ### 🔲 Phase 9 — Cross-Sectional Backtesting
 - Vectorbt integration for lightning-fast portfolio sorts.
 - Custom event loop for path-dependent execution constraints.
