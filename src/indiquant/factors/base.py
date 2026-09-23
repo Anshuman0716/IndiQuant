@@ -143,6 +143,19 @@ class FactorContext:
                     query,
                     {"start": start_date.isoformat(), "asof": asof.isoformat()},
                 ).df()
+                
+            from indiquant.universe.adjust import adjust_dataframe
+            # Apply corporate actions (splits, bonuses) backwards from the asof date.
+            df = adjust_dataframe(df, self.lakehouse, adjust_for=["split", "bonus", "dividend"])
+            if not df.empty:
+                # Replace raw prices with adjusted prices for downstream transparency
+                df["open"] = df["adj_open"]
+                df["high"] = df["adj_high"]
+                df["low"] = df["adj_low"]
+                df["close"] = df["adj_close"]
+                df["prev_close"] = df["adj_prev_close"]
+                df["volume"] = df["adj_volume"]
+                
         except duckdb.IOException:
             logger.warning("get_prices_no_data", asof=asof.isoformat())
             df = pd.DataFrame()

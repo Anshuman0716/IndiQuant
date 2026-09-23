@@ -33,7 +33,7 @@ export function shapeBacktestReport(rawReport: any) {
         },
         detail_url: `http://127.0.0.1:8000/v1/backtest/${rawReport.run_id}/report`,
         data_as_of: rawReport.data_as_of,
-        note: "Warning: Backtest uses unadjusted raw prices. Engine currently lacks corporate action adjustments, so multi-month returns spanning a stock split/bonus will contain artificial price drop artifacts."
+        note: "Note: Backtest execution uses correctly adjusted point-in-time prices."
     };
 }
 

@@ -5,6 +5,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { apiClient, handleApiError } from "./api_client.js";
 import {
   shapeBacktestReport,
@@ -32,70 +33,70 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "list_factors",
         description: "Discover the factor library with metadata.",
-        inputSchema: z.object({}).shape,
+        inputSchema: zodToJsonSchema(z.object({})) as any,
       },
       {
         name: "screen_stocks",
         description: "Fundamental screen. Note: Uses real Lakehouse fundamentals. IMPORTANT: Data begins in 2025.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           metric: z.string(),
           operator: z.enum(["gt", "lt", "between"]),
           threshold: z.number(),
           as_of: z.string().describe("ISO date string YYYY-MM-DD"),
-        }).shape,
+        })) as any,
       },
       {
         name: "screen_stocks_technical",
         description: "Technical screen. Note: Uses real equity_daily data.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           metric: z.string(),
           operator: z.enum(["gt", "lt", "between", "crosses_above", "crosses_below"]),
           threshold: z.number(),
           as_of: z.string().describe("ISO date string YYYY-MM-DD"),
-        }).shape,
+        })) as any,
       },
       {
         name: "run_backtest",
         description: "Launch a backtest. Note: The backend executes backtests via a single-worker ThreadPoolExecutor. Concurrent backtest requests will queue rather than run in parallel. IMPORTANT: Only NIFTY 50 universe is currently available. Data begins in 2016-03-08.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           name: z.string(),
           capital: z.number(),
           start_date: z.string(),
           end_date: z.string(),
           factors: z.array(z.string()),
           weights: z.array(z.number()),
-        }).shape,
+        })) as any,
       },
       {
         name: "get_backtest_report",
         description: "Get shaped backtest metrics and narrative summary.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           run_id: z.string(),
-        }).shape,
+        })) as any,
       },
       {
         name: "get_validation_report",
         description: "Get DSR, PBO, walk-forward, and break-even cost analysis.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           run_id: z.string(),
-        }).shape,
+        })) as any,
       },
       {
         name: "compare_strategies",
         description: "Compare multiple strategies side by side.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           run_ids: z.array(z.string()),
-        }).shape,
+        })) as any,
       },
       {
         name: "explain_costs",
         description: "Itemise the Indian statutory cost stack and slippage for a trade profile.",
-        inputSchema: z.object({
+        inputSchema: zodToJsonSchema(z.object({
           trade_date: z.string(),
           qty: z.number(),
           price: z.number(),
           side: z.enum(["BUY", "SELL"]),
-        }).shape,
+        })) as any,
       }
     ],
   };
@@ -143,7 +144,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
          if (poll.data.status === "failed") throw new Error("Backtest failed");
          await new Promise(r => setTimeout(r, 1000));
       }
-      return { content: [{ type: "text", text: JSON.stringify({ run_id, status: "completed", note: "Warning: Backtest uses unadjusted raw prices. Engine currently lacks corporate action adjustments, so multi-month returns spanning a stock split/bonus will contain artificial price drop artifacts." }) }] };
+      return { content: [{ type: "text", text: JSON.stringify({ run_id, status: "completed", note: "Note: Backtest execution uses correctly adjusted point-in-time prices." }) }] };
     }
 
     if (name === "get_backtest_report") {
