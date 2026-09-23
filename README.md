@@ -7,6 +7,14 @@ A **point-in-time correct, survivorship-bias-free** systematic research and back
 ![Tests](https://img.shields.io/badge/Tests-46%20passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+## 🚀 Live Demo
+
+The API is currently deployed live on Render!
+- **Interactive API Docs (Swagger UI):** [https://indiquant-api.onrender.com/docs](https://indiquant-api.onrender.com/docs)
+- **Health Check:** [https://indiquant-api.onrender.com/v1/health](https://indiquant-api.onrender.com/v1/health)
+
+*(Note: Deployed on Render's Free tier. The first request may take up to 50 seconds if the container has spun down due to inactivity).*
+
 ## What This Does
 
 IndiQuant ingests historical Indian market data, computes quantitative factors organised into six research pillars (Quality, Valuation, Growth, Financial Health, Momentum, Ownership), and will backtest whether composite stock scores predict forward returns — with the **full Indian statutory cost stack**, not a flat commission approximation.
