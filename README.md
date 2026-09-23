@@ -85,9 +85,6 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - Full Indian cost model (7 statutory charges with date-effective rates).
 - Limit order fill simulation using volume profile caps (Slippage Model).
 
-### 🔲 Phase 8 — AI Agent Integration (MCP)
-- Expose the entire DuckDB lakehouse and backtest engine to LLMs via the Model Context Protocol (TypeScript).
-
 ### 🔲 Phase 9 — Cross-Sectional Backtesting
 - Vectorbt integration for lightning-fast portfolio sorts.
 - Custom event loop for path-dependent execution constraints.
