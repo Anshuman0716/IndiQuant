@@ -73,11 +73,28 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - **MCP Server (TypeScript)**: Model Context Protocol integration, allowing AI agents direct access to factor data, universe construction, and backtesting.
 - **Render Deployment**: Fully automated Infrastructure as Code (`render.yaml`) for deploying the web service, background workers, and PostgreSQL metadata DB.
 
-### 🔲 Pending
+### 🔲 Phase 5 — Anti-Overfitting & Trial Registry (WIP)
+- Deflated Sharpe Ratio (DSR) engine to penalize multiple testing.
+- Persistent Trial Registry to honestly log every backtest run.
 
-- Full Indian cost model (7 statutory charges with date-effective rates)
-- Backtest engine (vectorbt + custom event loop)
-- `decile-report` CLI command
+### 🔲 Phase 6 — Advanced Analytics & Derivatives
+- Open Interest (OI) buildup classification.
+- FII/DII cash flow tracking (working around NSE WAF blockades).
+
+### 🔲 Phase 7 — Statutory Cost & Execution Engine
+- Full Indian cost model (7 statutory charges with date-effective rates).
+- Limit order fill simulation using volume profile caps (Slippage Model).
+
+### 🔲 Phase 8 — AI Agent Integration (MCP)
+- Expose the entire DuckDB lakehouse and backtest engine to LLMs via the Model Context Protocol (TypeScript).
+
+### 🔲 Phase 9 — Cross-Sectional Backtesting
+- Vectorbt integration for lightning-fast portfolio sorts.
+- Custom event loop for path-dependent execution constraints.
+
+### 🔲 Phase 10 — Production Reporting
+- `decile-report` CLI command for generating PDF tearsheets.
+- Automated daily strategy tracking.
 
 ## Tech Stack
 
