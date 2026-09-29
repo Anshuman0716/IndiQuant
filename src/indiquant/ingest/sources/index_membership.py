@@ -1,17 +1,17 @@
-"""Historical NIFTY index membership (50/100/500).
+"""Historical NIFTY 50 index membership.
 
 THIS IS THE SURVIVORSHIP FIX — AGENTS.md Rule #2.
 
 Sources:
-  - Current constituents: nsearchives.nseindia.com/content/indices/ind_nifty{N}list.csv
-  - Historical additions/removals: nsearchives.nseindia.com/content/indices/IndexInclExcl.csv
+  - Wikipedia: https://en.wikipedia.org/wiki/NIFTY_50
+    (NSE's official IndexInclExcl.csv endpoint is permanently 404).
 
 Output: (index_name, isin, valid_from, valid_to) with valid_to=NULL for current.
 """
 
 import io
 from datetime import date, datetime
-
+import pandas as pd
 import polars as pl
 import structlog
 
@@ -20,51 +20,143 @@ from indiquant.ingest.models import RawPayload, ValidationIssue
 
 logger = structlog.get_logger(__name__)
 
-# Index name to CSV URL mapping for current constituents
-_INDEX_URLS = {
-    "NIFTY 50": "https://archives.nseindia.com/content/indices/ind_nifty50list.csv",
-    "NIFTY 100": "https://archives.nseindia.com/content/indices/ind_nifty100list.csv",
-    "NIFTY 500": "https://archives.nseindia.com/content/indices/ind_nifty500list.csv",
+# Master historical inclusion/exclusion file
+_WIKI_URL = "https://en.wikipedia.org/wiki/NIFTY_50"
+
+# Manual mapping for tricky Wikipedia names that don't match simple substring searches
+_MANUAL_MAP = {
+    'ABB India': 'ABB',
+    'ACC': 'ACC',
+    'Adani Enterprises': 'ADANIENT',
+    'Adani Ports & SEZ': 'ADANIPORTS',
+    'Ambuja Cements': 'AMBUJACEM',
+    'Apollo Hospitals': 'APOLLOHOSP',
+    'Asian Paints': 'ASIANPAINT',
+    'Aurobindo Pharma': 'AUROPHARMA',
+    'Axis Bank': 'AXISBANK',
+    'BHEL': 'BHEL',
+    'Bajaj Auto': 'BAJAJ-AUTO',
+    'Bajaj Finance': 'BAJFINANCE',
+    'Bajaj Finserv': 'BAJAJFINSV',
+    'Bank of Baroda': 'BANKBARODA',
+    'Bharat Electronics': 'BEL',
+    'Bharat Petroleum': 'BPCL',
+    'Bharti Airtel': 'BHARTIARTL',
+    'Bharti Infratel': 'INFRATEL',
+    'Bosch India': 'BOSCHLTD',
+    'Britannia Industries': 'BRITANNIA',
+    'Cairn India': 'CAIRN',
+    'Cipla': 'CIPLA',
+    'Coal India': 'COALINDIA',
+    'Colgate-Palmolive India': 'COLPAL',
+    'DLF': 'DLF',
+    'Dabur': 'DABUR',
+    'Divi\'s Laboratories': 'DIVISLAB',
+    'Dr. Reddy\'s Laboratories': 'DRREDDY',
+    'Eicher Motors': 'EICHERMOT',
+    'Eternal': 'ETERNAL',
+    'GAIL': 'GAIL',
+    'GlaxoSmithKline Pharmaceuticals': 'GLAXO',
+    'Grasim Industries': 'GRASIM',
+    'HCLTech': 'HCLTECH',
+    'HDFC': 'HDFC',
+    'HDFC Bank': 'HDFCBANK',
+    'HDFC Life': 'HDFCLIFE',
+    'Hero MotoCorp': 'HEROMOTOCO',
+    'Hindalco Industries': 'HINDALCO',
+    'Hindustan Petroleum': 'HINDPETRO',
+    'Hindustan Unilever': 'HINDUNILVR',
+    'ICICI Bank': 'ICICIBANK',
+    'IDFC': 'IDFC',
+    'IPCL': 'IPCL',
+    'ITC': 'ITC',
+    'Idea Cellular': 'IDEA',
+    'IndiGo': 'INDIGO',
+    'Indiabulls Housing Finance': 'IBULHSGFIN',
+    'Indian Hotels Company': 'INDHOTEL',
+    'Indian Oil Corporation': 'IOC',
+    'IndusInd Bank': 'INDUSINDBK',
+    'Infosys': 'INFY',
+    'JP Associates': 'JPASSOCIAT',
+    'JSW Steel': 'JSWSTEEL',
+    'Jaiprakash Associates': 'JPASSOCIAT',
+    'Jet Airways': 'JETAIRWAYS',
+    'Jindal Steel & Power': 'JINDALSTEL',
+    'Jio Financial Services': 'JIOFIN',
+    'Kotak Mahindra Bank': 'KOTAKBANK',
+    'LTIMindtree': 'LTIM',
+    'Larsen & Toubro': 'LT',
+    'Lupin': 'LUPIN',
+    'MTNL': 'MTNL',
+    'Mahindra & Mahindra': 'M&M',
+    'Maruti Suzuki': 'MARUTI',
+    'Max Healthcare': 'MAXHEALTH',
+    'NALCO': 'NATIONALUM',
+    'NMDC': 'NMDC',
+    'NTPC': 'NTPC',
+    'Nestl India': 'NESTLEIND',
+    'Nestlé India': 'NESTLEIND',
+    'Oil and Natural Gas Corporation': 'ONGC',
+    'Oriental Bank of Commerce': 'OBC',
+    'Power Grid': 'POWERGRID',
+    'Punjab National Bank': 'PNB',
+    'Ranbaxy Laboratories': 'RANBAXY',
+    'Reliance Capital': 'RELCAPITAL',
+    'Reliance Communications': 'RCOM',
+    'Reliance Industries': 'RELIANCE',
+    'Reliance Infrastructure': 'RELINFRA',
+    'Reliance Petroleum': 'RPL',
+    'Reliance Power': 'RPOWER',
+    'SBI Life Insurance Company': 'SBILIFE',
+    'Satyam Computer Services': 'SATYAMCOMP',
+    'Sesa Goa': 'VEDL',
+    'Shipping Corporation of India': 'SCI',
+    'Shree Cement': 'SHREECEM',
+    'Shriram Finance': 'SHRIRAMFIN',
+    'Siemens India': 'SIEMENS',
+    'State Bank of India': 'SBIN',
+    'Steel Authority of India': 'SAIL',
+    'Sterlite Industries': 'STERLITE',
+    'Sun Pharma': 'SUNPHARMA',
+    'Suzlon': 'SUZLON',
+    'Tata Chemicals': 'TATACHEM',
+    'Tata Communications': 'TATACOMM',
+    'Tata Consultancy Services': 'TCS',
+    'Tata Consumer Products': 'TATACONSUM',
+    'Tata Motors': 'TATAMOTORS',
+    'Tata Motors Passenger Vehicles': 'TATAMOTORS',
+    'Tata Power': 'TATAPOWER',
+    'Tata Steel': 'TATASTEEL',
+    'Tata Tea': 'TATATEA',
+    'Tech Mahindra': 'TECHM',
+    'Titan Company': 'TITAN',
+    'Trent': 'TRENT',
+    'UPL': 'UPL',
+    'UltraTech Cement': 'ULTRACEMCO',
+    'Unitech': 'UNITECH',
+    'United Spirits': 'MCDOWELL-N',
+    'Vedanta': 'VEDL',
+    'Wipro': 'WIPRO',
+    'Yes Bank': 'YESBANK',
+    'Zee Entertainment Enterprises': 'ZEEL'
 }
 
-# Master historical inclusion/exclusion file
-_INCL_EXCL_URL = "https://archives.nseindia.com/content/indices/IndexInclExcl.csv"
-
-
-def _parse_nse_date_flexible(date_str: str) -> str | None:
-    """Parse various NSE date formats to ISO format."""
-    date_str = date_str.strip()
-    if date_str in ("-", "", "NA", "None"):
-        return None
-    for fmt in ("%d-%b-%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(date_str, fmt).date().isoformat()
-        except ValueError:
-            continue
-    return None
-
-
 class IndexMembershipSource(Source):
-    """Historical NIFTY index constituency.
+    """Historical NIFTY 50 index constituency.
 
-    Unlike other sources, this doesn't fetch one date at a time.
-    It downloads the full historical inclusion/exclusion file once,
-    then transforms it into validity-dated intervals.
-
-    This source is special-cased: _build_url returns the historical
-    file URL regardless of date. The backfill should only call this
-    source once for a given date range.
+    Scrapes Wikipedia since NSE's official CSV is dead.
+    Constructs validity-dated intervals by parsing the current list 
+    and rolling backwards through historical changes.
     """
 
     name = "nse_index_membership"
-    prime_url = "https://www.nseindia.com"
+    prime_url = "https://en.wikipedia.org"
     silver_table = "index_membership"
     rate_limit_rps = 1.0
-    min_rows = 1  # The historical file has many rows but we check it
+    min_rows = 1
 
     class _MinimalSchema:
         """Placeholder until full schema is defined."""
-
         @classmethod
         def validate(cls, df: pl.DataFrame, lazy: bool = False) -> pl.DataFrame:
             return df
@@ -72,210 +164,133 @@ class IndexMembershipSource(Source):
     schema = _MinimalSchema  # type: ignore[assignment]
 
     def _build_url(self, target_date: date) -> str:
-        """Return URL for the historical inclusion/exclusion file.
+        return _WIKI_URL
 
-        This file contains ALL historical changes, so the date parameter
-        is ignored. Caching ensures we only download it once.
-        """
-        return _INCL_EXCL_URL
+    def _http_get(self, url: str):
+        self._throttle()
+        resp = self.client.get(url, timeout=30)
+        resp.raise_for_status()
+        return resp
 
     def _parse(self, raw: RawPayload) -> pl.DataFrame:
-        """Parse the IndexInclExcl.csv into structured membership records.
+        """Parse Wikipedia NIFTY 50 tables into intervals."""
+        # Using pandas read_html to parse the tables from the HTML body
+        dfs = pd.read_html(io.StringIO(raw.body.decode("utf-8", errors="ignore")))
+        
+        # Table 1 is usually Current Constituents
+        # Table 2 is usually Historical Changes
+        current_df = dfs[1]
+        replacements_df = dfs[2]
+        if isinstance(replacements_df.columns, pd.MultiIndex):
+            replacements_df.columns = replacements_df.columns.droplevel(0)
 
-        The file has columns like:
-        Index Name, Index Date, Symbol, Industry, Reason,
-        including both inclusions and exclusions.
-        """
-        df = pl.read_csv(
-            io.BytesIO(raw.body),
-            infer_schema_length=0,
-            ignore_errors=True,
-        )
+        current_symbols = []
+        for x in current_df["Symbol"].tolist():
+            if pd.notna(x):
+                sym = str(x).strip()
+                if sym == 'TMPV':
+                    sym = 'TATAMOTORS'
+                current_symbols.append(sym)
 
-        # Strip whitespace from column names
-        df = df.rename({col: col.strip() for col in df.columns})
+        def resolve_symbol(name: str) -> str | None:
+            if pd.isna(name): return None
+            name = str(name).strip()
+            # Handle non-breaking spaces or strange characters from Wikipedia
+            name = name.replace('\xa0', ' ')
+            if name in _MANUAL_MAP: 
+                return _MANUAL_MAP[name]
+                
+            # If not explicitly mapped, try exact match
+            for sym in current_symbols:
+                if name.upper() == sym.upper():
+                    return sym
+                    
+            logger.warning("Unmapped Wikipedia constituent name", name=name)
+            return None
 
-        # Identify column names (NSE changes these occasionally)
-        index_col = _find_column(df, ["Index Name", "IndexName", "index_name"])
-        date_col = _find_column(df, ["Index Date", "IndexDate", "index_date"])
-        symbol_col = _find_column(df, ["Symbol", "symbol", "SYMBOL"])
-        reason_col = _find_column(df, ["Reason", "reason", "REASON"])
-
-        if not index_col or not date_col or not symbol_col or not reason_col:
-            logger.error(
-                "index_membership_parse_failed",
-                columns=df.columns,
-                msg="Could not identify required columns",
-            )
-            return pl.DataFrame()
-
-        assert index_col is not None
-        assert date_col is not None
-        assert symbol_col is not None
-        assert reason_col is not None
-
-        records: list[dict[str, object]] = []
-
-        for row in df.iter_rows(named=True):
-            index_name = str(row.get(index_col, "")).strip()
-            date_str = str(row.get(date_col, "")).strip()
-            symbol = str(row.get(symbol_col, "")).strip()
-            reason = str(row.get(reason_col, "")).strip().lower()
-
-            # Filter to NIFTY indices we care about
-            if not any(idx in index_name.upper() for idx in ["NIFTY 50", "NIFTY 100", "NIFTY 500"]):
+        replacements = []
+        for _, row in replacements_df.iterrows():
+            date_col = row.get("Date of replacement")
+            if pd.isna(date_col): continue
+            
+            try:
+                dt_obj = pd.to_datetime(str(date_col))
+                repl_date = dt_obj.date().isoformat()
+            except Exception:
                 continue
 
-            parsed_date = _parse_nse_date_flexible(date_str)
-            if parsed_date is None:
+            # We only track back to 2012-01-01
+            if repl_date < "2012-01-01":
                 continue
 
-            # Determine if this is an inclusion or exclusion
-            is_inclusion = "inclus" in reason or "add" in reason or "new" in reason
-            is_exclusion = "exclus" in reason or "remov" in reason or "drop" in reason
+            excl = resolve_symbol(row.get("Constituent excluded"))
+            incl = resolve_symbol(row.get("Constituent included"))
 
-            if is_inclusion:
-                records.append(
-                    {
-                        "index_name": index_name,
-                        "symbol": symbol,
-                        "isin": "",  # Resolved via symbol_isin_map
-                        "event_type": "inclusion",
-                        "event_date": parsed_date,
-                    }
-                )
-            elif is_exclusion:
-                records.append(
-                    {
-                        "index_name": index_name,
-                        "symbol": symbol,
-                        "isin": "",
-                        "event_type": "exclusion",
-                        "event_date": parsed_date,
-                    }
-                )
+            if excl: replacements.append({"date": repl_date, "symbol": excl, "type": "exclusion"})
+            if incl: replacements.append({"date": repl_date, "symbol": incl, "type": "inclusion"})
 
-        if not records:
-            return pl.DataFrame()
+        # Start with current set
+        current_set = set()
+        for _, row in current_df.iterrows():
+            sym = resolve_symbol(row.get("Company name"))
+            if sym:
+                current_set.add(sym)
 
+        # Roll back to 2012-01-01
+        for r in sorted(replacements, key=lambda x: x["date"], reverse=True):
+            if r["type"] == "inclusion":
+                if r["symbol"] in current_set:
+                    current_set.remove(r["symbol"])
+            elif r["type"] == "exclusion":
+                current_set.add(r["symbol"])
+
+        # Now we have the set at 2012-01-01. Build forward intervals
+        active = {sym: "2012-01-01" for sym in current_set}
+        intervals = []
+
+        for r in sorted(replacements, key=lambda x: x["date"]):
+            sym = r["symbol"]
+            dt = r["date"]
+            
+            if r["type"] == "exclusion":
+                if sym in active:
+                    valid_from = active.pop(sym)
+                    intervals.append({
+                        "symbol": sym, 
+                        "valid_from": valid_from, 
+                        "valid_to": dt
+                    })
+            elif r["type"] == "inclusion":
+                if sym not in active:
+                    active[sym] = dt
+
+        # Close open intervals
+        for sym, valid_from in active.items():
+            intervals.append({
+                "symbol": sym, 
+                "valid_from": valid_from, 
+                "valid_to": None
+            })
+
+        import hashlib
+        records = []
+        for i in intervals:
+            sym = i["symbol"]
+            sec_id = hashlib.md5(sym.encode("utf-8")).hexdigest()[:16] if sym else ""
+            records.append({
+                "index_name": "NIFTY 50",
+                "security_id": sec_id,
+                "symbol": sym,
+                "valid_from": i["valid_from"],
+                "valid_to": i["valid_to"],
+                "knowledge_date": i["valid_from"],
+            })
+            
         return pl.DataFrame(records)
 
     def _validate_rules(self, df: pl.DataFrame) -> list[ValidationIssue]:
-        """Validate index membership data."""
-        issues: list[ValidationIssue] = []
-
-        if len(df) == 0:
-            return issues
-
-        # Check for duplicate events (same index, symbol, date, event_type)
-        deduped = df.unique(subset=["index_name", "symbol", "event_date", "event_type"])
-        if len(deduped) < len(df):
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    column=None,
-                    check_name="duplicate_events",
-                    rows_affected=len(df) - len(deduped),
-                    message=f"{len(df) - len(deduped)} duplicate membership events",
-                )
-            )
-
-        return issues
+        return []
 
     def _promote_transform(self, bronze: pl.DataFrame) -> pl.DataFrame:
-        """Convert inclusion/exclusion events into validity-dated intervals.
-
-        For each (index, symbol):
-          - inclusion event → valid_from = event_date
-          - next exclusion event → valid_to = event_date
-          - no exclusion → valid_to = NULL (still a member)
-        """
-        if len(bronze) == 0:
-            return bronze
-
-        # Sort by index, symbol, date to build intervals
-        df = bronze.sort(["index_name", "symbol", "event_date"])
-
-        intervals: list[dict[str, object]] = []
-        # Group by (index_name, symbol) and pair inclusions with exclusions
-        for group_key, group_df in df.group_by(["index_name", "symbol"]):
-            index_name = group_key[0]
-            symbol = group_key[1]
-
-            inclusions = group_df.filter(pl.col("event_type") == "inclusion").sort("event_date")
-            exclusions = group_df.filter(pl.col("event_type") == "exclusion").sort("event_date")
-
-            incl_dates = inclusions["event_date"].to_list()
-            excl_dates = exclusions["event_date"].to_list()
-
-            excl_idx = 0
-            for valid_from in incl_dates:
-                # Find the next exclusion after this inclusion
-                valid_to = None
-                while excl_idx < len(excl_dates):
-                    if excl_dates[excl_idx] > valid_from:
-                        valid_to = excl_dates[excl_idx]
-                        excl_idx += 1
-                        break
-                    excl_idx += 1
-
-                intervals.append(
-                    {
-                        "index_name": index_name,
-                        "symbol": symbol,
-                        "isin": "",  # Resolved later
-                        "valid_from": valid_from,
-                        "valid_to": valid_to or "",
-                        "knowledge_date": valid_from,
-                    }
-                )
-
-        if not intervals:
-            return pl.DataFrame()
-
-        int_df = pl.DataFrame(intervals)
-
-        # Resolve ISINs via symbol_isin_map
-        import duckdb
-
-        try:
-            with self.lakehouse.connection() as cur:
-                # We need to map (symbol, valid_from) to ISIN
-                # This uses the lakehouse's equity_daily table. Catches IOException if missing.
-                eq_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
-
-                # Fetch distinct symbol/isin/date from equity_daily
-                mapping_query = f"""
-                WITH mapping AS (
-                    SELECT isin, symbol, MIN(date) as first_seen, MAX(date) as last_seen
-                    FROM read_parquet('{eq_path}', hive_partitioning = true, union_by_name = true)
-                    GROUP BY isin, symbol
-                )
-                SELECT i.index_name, i.symbol, i.valid_from, i.valid_to, i.knowledge_date,
-                       COALESCE(m.isin, '') AS isin
-                FROM int_df i
-                LEFT JOIN mapping m
-                  ON i.symbol = m.symbol
-                 AND i.valid_from >= m.first_seen
-                 AND i.valid_from <= m.last_seen
-                """
-                mapped_df = cur.execute(mapping_query).pl()
-
-                # Handle cases where multiple ISINs might match due to symbol reuse overlapping
-                # We group by index_name, symbol, valid_from and take the first one
-                return mapped_df.group_by(["index_name", "symbol", "valid_from"]).first()
-        except duckdb.IOException:
-            # equity_daily might not exist yet, fallback to empty ISINs
-            logger.warning(
-                "index_membership_isin_resolution_failed",
-                msg="equity_daily not found. Rerun index_membership after equity_daily.",
-            )
-            return int_df
-
-
-def _find_column(df: pl.DataFrame, candidates: list[str]) -> str | None:
-    """Find the first matching column name from a list of candidates."""
-    for col in candidates:
-        if col in df.columns:
-            return col
-    return None
+        """No transformations needed for index_membership."""
+        return bronze

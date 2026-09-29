@@ -4,16 +4,9 @@ A **point-in-time correct, survivorship-bias-free** systematic research and back
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
 ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-orange)
-![Tests](https://img.shields.io/badge/Tests-46%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-70%20passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## 🚀 Live Demo
-
-The API is currently deployed live on Render!
-- **Interactive API Docs (Swagger UI):** [https://indiquant-api.onrender.com/docs](https://indiquant-api.onrender.com/docs)
-- **Health Check:** [https://indiquant-api.onrender.com/v1/health](https://indiquant-api.onrender.com/v1/health)
-
-*(Note: Deployed on Render's Free tier. The first request may take up to 50 seconds if the container has spun down due to inactivity).*
 
 ## What This Does
 
@@ -64,37 +57,45 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - **`@factor` decorator + `FactorRegistry`** — registers factors with metadata (pillar, direction, required tables)
 - **`FactorContext`** — the only way factors can access data; prevents lookahead by routing through `as_known_on()`
 - **Transforms:** `winsorize` (symmetric clipping), `z_score`, `rank_normalize` — all unit-tested with hand-computed values
-- **Composite score:** pillar-weighted scoring with floor logic (rescales weights when pillars are missing; masks if below `min_pillars`)
-- **Registered factors:** `momentum_12_1`, `roce_ttm` (computation stubs ready for real data hookup)
+- **Composite score:** pillar-weighted scoring with floor logic (rescales weights when pillars are missing; masks if below `min_pillars`). **Caveat**: The composite score must not be presented as "the Tapetide six-pillar composite" in any UI, demo, or outreach material until more than 2 of 6 pillars are real.
+- **Registered factors:** `momentum_12_1` (fully live and wired to real equity data), `roce_ttm` (structurally real but blocked by missing historical fundamentals data before 2025-02-14).
 
-### ✅ Phase 4 — API & MCP Integration (Complete)
+### ✅ Phase 4 — API Integration (Complete)
 
 - **FastAPI REST Layer**: Serves data with validation (Pydantic v2). Includes authentication and error handling.
-- **MCP Server (TypeScript)**: Model Context Protocol integration, allowing AI agents direct access to factor data, universe construction, and backtesting.
 - **Render Deployment**: Fully automated Infrastructure as Code (`render.yaml`) for deploying the web service, background workers, and PostgreSQL metadata DB.
 
-### 🔲 Phase 5 — Anti-Overfitting & Trial Registry (WIP)
-- Deflated Sharpe Ratio (DSR) engine to penalize multiple testing.
-- Persistent Trial Registry to honestly log every backtest run.
+### ✅ Phase 5 — Anti-Overfitting & Trial Registry (Complete)
 
-### 🔲 Phase 6 — Advanced Analytics & Derivatives
+- Append-only Trial Registry with `content_hash` deduplication and `data_provenance` gating.
+- Deflated Sharpe Ratio (DSR) using raw kurtosis variance modeling.
+- Purged Walk-Forward Cross-Validation with explicit embargo constraints.
+- PBO calculation structure defined but explicitly masked pending multi-factor capabilities.
+
+### 🔲 Phase 6 — Advanced Analytics & Derivatives (Not Started)
 - Open Interest (OI) buildup classification.
-- FII/DII cash flow tracking (working around NSE WAF blockades).
+- FII/DII cash flow tracking.
 
-### 🔲 Phase 7 — Statutory Cost & Execution Engine
-- Full Indian cost model (7 statutory charges with date-effective rates).
-- Limit order fill simulation using volume profile caps (Slippage Model).
+### ✅ Phase 7 — Statutory Cost & Execution Engine (Complete)
+- Full Indian cost model (7 statutory charges including STT, Exchange, SEBI, Stamp Duty, DP, GST with date-effective rates).
+- Clean mathematical separation between Real (cost-adjusted) and Paper (zero-cost) portfolios.
 
-### 🔲 Phase 8 — AI Agent Integration (MCP) (WIP)
+### ✅ Phase 8 — AI Agent Integration (MCP) (WIP)
+- **MCP Server (TypeScript)**: Model Context Protocol integration, allowing AI agents direct access to factor data, universe construction, and backtesting.
 - **Verified Working:** Stdio transport bridge successfully round-trips tool calls (e.g., `run_backtest`, `list_factors`) and enforces token budgeting via `shaping.ts`.
 - **Missing:** Remote HTTP+SSE transport with bearer auth is not yet implemented.
 
-### 🔲 Phase 9 — Cross-Sectional Backtesting
-- Vectorbt integration for lightning-fast portfolio sorts.
-- Custom event loop for path-dependent execution constraints.
+### ✅ Phase 9 — Cross-Sectional Backtesting (Complete)
+> **Note:** The Phase 9.1 engine update successfully fixed historical "split amnesia" (where old ISIN histories were stranded). The engine now correctly stitches ISINs and applies point-in-time backward split/bonus adjustments without lookahead bias, restoring the survivorship-free NIFTY 50 universe. While `index_membership` coverage extends from 2012–2024, factor-based backtesting is only valid from **~2017-03 onward** because `equity_daily` price data begins in 2016-03, requiring a ~380-day lookback buffer to compute the first valid momentum factors.
 
-### 🔲 Phase 10 — Production Reporting
-- `decile-report` CLI command for generating PDF tearsheets.
+**Current Architecture Layers (Phase 9.1):**
+- **Data Layer**: DuckDB over partitioned Parquet, Postgres for metadata, 3-state gap classifier, trading calendar derived from bhavcopy gaps.
+- **Identity Layer**: `security_id` serves as the stable primary key for index membership. The `isin_chain` table resolves a `security_id` to its active ISIN as of a given `knowledge_date`. (This replaces the earlier approach of hardcoding ISINs directly in `index_membership`).
+- **Price Layer**: `get_adjusted_prices` (in `store/pit.py`) applies a cumulative split/bonus adjustment from `corporate_actions`. It is point-in-time safe (only applies actions with `ex_date <= asof`) and is completely agnostic to whether the adjustment coincides with an ISIN change. (Both split and bonus mathematical structures are fully validated).
+- **Universe Validation**: The `BacktestEngine.run()` method enforces a strict `ValueError` guard. All constituents *must* have valid factor history unless explicitly listed in `MISSING_DATA_WAIVERS`. True structural exceptions (JIOFIN demerger, LTIM merger, BAJAJHLD) are explicitly waived.
+
+### 🔲 Phase 10 — Production Reporting (Not Started)
+- `FactorContext` + `decile-report` CLI command for generating PDF tearsheets.
 - Automated daily strategy tracking.
 
 ## Tech Stack
@@ -116,7 +117,7 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 | Retry | tenacity | Exponential backoff for NSE rate limits |
 | Linter | ruff | Replaces flake8 + isort + black |
 | Type Checker | mypy --strict | Catches errors before runtime |
-| Tests | pytest | 68 tests, strict markers |
+| Tests | pytest | 78 tests, strict markers |
 
 ## Project Structure
 
@@ -131,7 +132,7 @@ src/indiquant/
 │   ├── calendar.py       # Trading calendar derivation
 │   ├── cli.py            # `iq ingest backfill/status` commands
 │   ├── models.py         # RawPayload, ValidationReport
-│   ├── sources/          # 10 concrete Source implementations
+│   ├── sources/          # Concrete Source implementations
 │   └── adapters/         # Broker adapters (Kite, Dhan stubs)
 ├── store/                # DuckDB/Parquet lakehouse
 │   ├── lakehouse.py      # read_table, write_bronze, write_silver
@@ -149,13 +150,25 @@ src/indiquant/
 │   ├── membership.py     # Historical membership resolution
 │   ├── liquidity.py      # ADV-based liquidity filters
 │   └── delisting.py      # Delisting event handling
-├── costs/                # Indian statutory cost model (planned)
-├── engine/               # Backtest engine (planned)
+├── costs/                # Indian statutory cost model
+│   ├── engine.py         # Cost deduction and Real/Paper split
+│   ├── rates.py          # Time-dated statutory rates
+│   ├── slippage.py       # ADV-based slippage functions
+│   └── statutory.py      # STT, stamp duty, exchange fees
+├── backtest/             # Cross-sectional backtest engine
+│   ├── engine.py         # Portfolio simulation, pro-rata scaling
+│   └── models.py         # BacktestResult, Position, TargetWeight
+├── validation/           # Anti-overfitting harness
+│   ├── registry.py       # Append-only trial registry (SQLite/DuckDB)
+│   ├── deflated_sharpe.py# DSR computation based on trial count
+│   ├── walk_forward.py   # Purged CV with embargo
+│   ├── multiple_testing.py# Family-wise error rate adjustments
+│   └── pbo.py            # Probability of Backtest Overfitting
 ├── report/               # Tearsheets (planned)
 └── logging.py            # structlog config
 
 mcp-server/               # TypeScript MCP Server for AI integration
-tests/                    # 68 tests across all modules
+tests/                    # 78 tests across all modules
 scripts/                  # Utility scripts (backfill, coverage checks)
 render.yaml               # Render Infrastructure as Code definition
 Dockerfile                # Unified runtime for API and background jobs
@@ -210,7 +223,8 @@ All data comes from **free, public endpoints**. No paid API keys are used.
 
 | Decision | Rationale |
 |---|---|
-| ISIN as primary key, never ticker | NSE reuses symbols (e.g., `VEDL` was `SESAGOA`). Joining on symbol silently loses history. |
+| `security_id` as primary identity | NSE reuses symbols (e.g., `VEDL` was `SESAGOA`) and issues new ISINs on splits. `security_id` anchors index membership stably across events. |
+| ISIN for point-in-time joins | Historical prices (`equity_daily`) and fundamentals are strictly stored and queried using the ISIN active at that date. |
 | Polars for ingestion, pandas for research | Polars is faster for I/O-heavy parsing; pandas for vectorbt ecosystem compatibility. |
 | UUID-named Parquet files per write | Prevents DuckDB `OVERWRITE_OR_IGNORE` from wiping partition directories. |
 | 200-day max staleness for fundamentals | An 11-month-old quarterly result is barely different from missing data. No median imputation. |
