@@ -1,6 +1,5 @@
 """VectorBT cross-sectional runner for baseline execution."""
 
-import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
@@ -14,7 +13,7 @@ def run_vbt_cross_sectional(
     slippage: float = 0.0,
 ) -> vbt.Portfolio:
     """Run a basic vectorbt backtest with target weights.
-    
+
     Args:
         prices: DataFrame of close prices, index=dates, columns=assets.
         weights: DataFrame of target weights, index=dates, columns=assets.
@@ -22,13 +21,13 @@ def run_vbt_cross_sectional(
         init_cash: Initial capital.
         fees: Flat fee rate (e.g. 0.001 for 0.1%).
         slippage: Flat slippage rate.
-        
+
     Returns:
         vbt.Portfolio object.
     """
     # Align weights to prices. We forward fill weights so they hold until next rebalance.
     aligned_weights = weights.reindex(prices.index, method="ffill").fillna(0.0)
-    
+
     pf = vbt.Portfolio.from_orders(
         close=prices,
         size=aligned_weights,

@@ -41,7 +41,7 @@ def test_idempotent_ingest(tmp_lakehouse):
     # Read second run output
     df2 = tmp_lakehouse.read_table("mock_table")
 
-    # In an append-only lakehouse, force=True appends a new file. 
+    # In an append-only lakehouse, force=True appends a new file.
     # We deduplicate to verify the logical contents are idempotent.
     df2 = df2.drop_duplicates(subset=["value", "source"])
 

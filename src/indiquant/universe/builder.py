@@ -73,9 +73,9 @@ def build_universe(
     if len(base_isins) == 0:
         logger.warning("universe_empty_base", index=index_name, asof=asof.isoformat())
         return UniverseSnapshot(
-            asof=asof, 
-            index_name=index_name, 
-            members=[], 
+            asof=asof,
+            index_name=index_name,
+            members=[],
             audit_trail={},
             flags_status={},
         )

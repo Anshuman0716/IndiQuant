@@ -86,10 +86,10 @@ class Lakehouse:
         partition_dir = table_dir / f"year={year}"
         partition_dir.mkdir(parents=True, exist_ok=True)
 
-        import uuid
-        import tempfile
-        import shutil
         import os
+        import shutil
+        import tempfile
+        import uuid
 
         # We don't need the 'year' column in the parquet file itself for hive partitioning
         if "year" in df.columns:
@@ -102,13 +102,13 @@ class Lakehouse:
         try:
             # Write to temp file
             df.write_parquet(tmp_file, compression="zstd")
-            
+
             # Atomically move into partition directory
             target_file = partition_dir / tmp_file.name
             os.rename(tmp_file, target_file)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            
+
         return table_dir
 
     def read_table(
@@ -121,7 +121,7 @@ class Lakehouse:
         """Read from silver layer with predicate pushdown. Returns pandas."""
         table_path = (self.silver_dir / name / "**/*.parquet").as_posix()
 
-        query = f"SELECT * FROM read_parquet('{table_path}', hive_partitioning = true, union_by_name = true)"  # noqa: E501
+        query = f"SELECT * FROM read_parquet('{table_path}', hive_partitioning = true, union_by_name = true)"
 
         where_clauses: list[str] = []
         params: list[Any] = []
@@ -172,7 +172,7 @@ class Lakehouse:
     def read_quality_log(self, source: str | None = None) -> pd.DataFrame:
         """Read data-quality records."""
         log_dir = (self.meta_dir / "data_quality" / "**/*.parquet").as_posix()
-        query = f"SELECT * FROM read_parquet('{log_dir}', hive_partitioning = true, union_by_name = true)"  # noqa: E501
+        query = f"SELECT * FROM read_parquet('{log_dir}', hive_partitioning = true, union_by_name = true)"
         params: list[str] = []
         if source:
             query += " WHERE source = ?"

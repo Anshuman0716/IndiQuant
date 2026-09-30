@@ -1,46 +1,59 @@
 """Validation CLI commands."""
-import typer
-from typing import Optional
-from datetime import date
+
 from pathlib import Path
+
+import typer
 from rich.console import Console
 
 app = typer.Typer(help="Anti-overfitting validation harness.")
 console = Console()
 
+
 @app.callback(invoke_without_command=True)
 def validate(
-    strategy: str = typer.Option(..., "--strategy", help="Strategy to validate (e.g., tapetide_composite)"),
-    full: bool = typer.Option(False, "--full", help="Run the full robustness suite and output HTML report"),
-    unseal: bool = typer.Option(False, "--unseal", help="Unseal the out-of-sample period (LOGGED EVENT)"),
+    strategy: str = typer.Option(
+        ..., "--strategy", help="Strategy to validate (e.g., tapetide_composite)"
+    ),
+    full: bool = typer.Option(
+        False, "--full", help="Run the full robustness suite and output HTML report"
+    ),
+    unseal: bool = typer.Option(
+        False, "--unseal", help="Unseal the out-of-sample period (LOGGED EVENT)"
+    ),
 ):
     """Run the anti-overfitting validation harness."""
-    from indiquant.validation.registry import TrialRegistry
     from indiquant.config.settings import IndiQuantSettings
-    
+    from indiquant.validation.registry import TrialRegistry
+
     settings = IndiQuantSettings()
     registry = TrialRegistry(settings)
-    
+
     if unseal:
-        console.print("[bold red]WARNING: OOS period unsealed. This event will be permanently logged.[/bold red]")
-    
+        console.print(
+            "[bold red]WARNING: OOS period unsealed. This event will be permanently logged.[/bold red]"
+        )
+
     trial_count = registry.trial_count(strategy)
-    
-    console.print(f"[bold cyan]Trial Registry:[/bold cyan] Found {trial_count} historical trials for '{strategy}'.")
-    
+
+    console.print(
+        f"[bold cyan]Trial Registry:[/bold cyan] Found {trial_count} historical trials for '{strategy}'."
+    )
+
     if not full:
         console.print("Run with --full to execute the complete suite.")
         return
-        
-    console.print(f"\n[bold green]Running Full Anti-Overfitting Suite for {strategy}...[/bold green]")
-    
+
+    console.print(
+        f"\n[bold green]Running Full Anti-Overfitting Suite for {strategy}...[/bold green]"
+    )
+
     report_path = Path.cwd() / f"validation_report_{strategy}.md"
-    
+
     md_content = f"""# Anti-Overfitting Report: {strategy}
 
 ## 1. Trial Registry
 - **Total Logged Trials:** {trial_count}
-- **OOS Status:** {'UNSEALED' if unseal else 'SEALED'}
+- **OOS Status:** {"UNSEALED" if unseal else "SEALED"}
 - **Note on Backfill:** The count includes 8 reconstructed trials from implicit zero-shot design decisions made prior to registry enforcement.
 
 ## 2. Statistical Significance & DSR Sensitivity
@@ -112,6 +125,5 @@ Regressing the strategy returns on the Agarwalla/Jacob/Varma factors:
 The factor regression yields an insignificant alpha (t=0.409), proving the strategy is merely repackaging known factor risks (primarily HML). The Walk-Forward OOS Sharpes are abysmal (2022 is negative), the regime table shows complete failure in drawdowns (-55% in COVID, -41% in IL&FS), and the PBO is 81%. The Tapetide Composite is entirely overfit noise and must be rejected.
 """
     report_path.write_text(md_content, encoding="utf-8")
-    
+
     console.print(f"[bold green]Success![/bold green] Report written to {report_path.name}")
-    

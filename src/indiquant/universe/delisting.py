@@ -41,20 +41,20 @@ def get_delisting_info(
         return {}
 
     isin_list = "'" + "','".join(isins) + "'"
-    
+
     result: dict[str, dict[str, Any]] = {
         isin: {
             "delisting_date": None,
             "haircut": None,
             "delisting_reason": "unknown",
-        } 
+        }
         for isin in isins
     }
 
     # 1. Check actual delisting source (to be built in Phase 1b/2b)
     # The source nse_delisting will land in `delistings` silver table.
     delist_path = (lakehouse.silver_dir / "delistings" / "**/*.parquet").as_posix()
-    
+
     try:
         with lakehouse.connection() as cur:
             df_delist = cur.execute(f"""
@@ -63,28 +63,28 @@ def get_delisting_info(
                 WHERE isin IN ({isin_list})
                   AND delisting_date > '{asof.isoformat()}'
             """).df()
-            
+
             for _, row in df_delist.iterrows():
                 isin = str(row["isin"])
                 d_date = row["delisting_date"]
                 reason = str(row["reason"])
-                
+
                 result[isin]["delisting_date"] = d_date
                 result[isin]["delisting_reason"] = reason
-                
+
                 if reason == "merger_acquisition":
                     # M&A usually exits at fair value or premium, no arbitrary penalty
                     result[isin]["haircut"] = 0.0
                 else:
                     result[isin]["haircut"] = terminal_haircut
-                    
+
     except duckdb.IOException:
         # Table doesn't exist yet, which is expected before the source is built.
         pass
 
     # 2. Heuristic check: warn only, do NOT silently apply haircut
     eq_path = (lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
-    
+
     query_heuristic = f"""
     WITH market_max AS (
         SELECT MAX(CAST(date AS DATE)) AS max_market_date
@@ -100,27 +100,32 @@ def get_delisting_info(
     FROM isin_max i
     CROSS JOIN market_max m
     """
-    
+
     try:
         with lakehouse.connection() as cur:
             df_heur = cur.execute(query_heuristic).df()
-            
+
         for _, row in df_heur.iterrows():
             isin = str(row["isin"])
             last_seen = row["last_seen"]
             max_mkt = row["max_market_date"]
-            
-            if pd.notnull(last_seen) and pd.notnull(max_mkt):
+
+            if (
+                pd.notnull(last_seen)
+                and pd.notnull(max_mkt)
+                and (max_mkt - last_seen).days > 30
+                and result[isin]["delisting_date"] is None
+            ):
                 # Using 30 days logic for WARNING only
-                if (max_mkt - last_seen).days > 30:
-                    if result[isin]["delisting_date"] is None:
-                        logger.warning(
-                            "potential_silent_delisting",
-                            isin=isin,
-                            last_seen=last_seen.isoformat() if hasattr(last_seen, "isoformat") else str(last_seen),
-                            max_mkt=max_mkt.isoformat() if hasattr(max_mkt, "isoformat") else str(max_mkt),
-                            msg="ISIN is missing from recent equity_daily files but has no explicit delisting record. Manual review required."
-                        )
+                logger.warning(
+                    "potential_silent_delisting",
+                    isin=isin,
+                    last_seen=last_seen.isoformat()
+                    if hasattr(last_seen, "isoformat")
+                    else str(last_seen),
+                    max_mkt=max_mkt.isoformat() if hasattr(max_mkt, "isoformat") else str(max_mkt),
+                    msg="ISIN is missing from recent equity_daily files but has no explicit delisting record. Manual review required.",
+                )
     except duckdb.IOException:
         pass
 

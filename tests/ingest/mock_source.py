@@ -6,9 +6,8 @@ from pandera.typing.polars import Series
 
 from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
-
-
 from indiquant.store.schemas import _ProvenanceMixin
+
 
 class MockSchema(_ProvenanceMixin):
     value: Series[int] = pa.Field(ge=0)

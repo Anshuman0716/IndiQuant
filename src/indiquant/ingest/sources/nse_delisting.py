@@ -4,21 +4,19 @@ Provides explicit dates and reasons for security delistings.
 """
 
 from datetime import date
-from typing import Any
 
-import pandas as pd
+import pandera.polars as pa
 import polars as pl
-import structlog
 from pandera.typing.polars import Series
 
 from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.store.schemas import _ProvenanceMixin
-import pandera.polars as pa
 
 
 class DelistingSchema(_ProvenanceMixin):
     """Explicit delisting events."""
+
     isin: Series[str] = pa.Field(str_length={"min_value": 12, "max_value": 12})
     symbol: Series[str]
     delisting_date: Series[str]
@@ -27,7 +25,7 @@ class DelistingSchema(_ProvenanceMixin):
 
 class NseDelistingSource(Source):
     """NSE delisting data source.
-    
+
     Parses regulation notices or exchange CSVs containing delisting events.
     """
 
@@ -62,7 +60,5 @@ class NseDelistingSource(Source):
     def _promote_transform(self, bronze: pl.DataFrame) -> pl.DataFrame:
         if len(bronze) == 0:
             return bronze
-            
-        return bronze.with_columns(
-            pl.col("delisting_date").alias("knowledge_date")
-        )
+
+        return bronze.with_columns(pl.col("delisting_date").alias("knowledge_date"))

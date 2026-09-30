@@ -1,11 +1,16 @@
 """F&O Ban list data source."""
+
 from datetime import date
+
 import polars as pl
-import structlog
-from indiquant.ingest.models import RawPayload, ValidationIssue
+
 from indiquant.ingest.base import Source
+from indiquant.ingest.models import RawPayload, ValidationIssue
+
+
 class _MinimalSchema:
     pass
+
 
 class FnoBanSource(Source):
     name = "nse_fno_ban"
@@ -29,18 +34,12 @@ class FnoBanSource(Source):
                 sym = parts[1].strip()
                 if sym:
                     symbols.append(sym)
-                    
-        return pl.DataFrame({
-            "date": [raw.date.isoformat()] * len(symbols),
-            "symbol": symbols
-        })
+
+        return pl.DataFrame({"date": [raw.date.isoformat()] * len(symbols), "symbol": symbols})
 
     def _validate_rules(self, df: pl.DataFrame) -> list[ValidationIssue]:
         return []
 
     def _promote_transform(self, bronze: pl.DataFrame) -> pl.DataFrame:
-        df = bronze.with_columns(
-            pl.col("date").alias("knowledge_date"),
-            pl.lit("").alias("isin")
-        )
+        df = bronze.with_columns(pl.col("date").alias("knowledge_date"), pl.lit("").alias("isin"))
         return df
