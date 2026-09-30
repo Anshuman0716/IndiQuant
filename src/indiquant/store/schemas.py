@@ -66,15 +66,24 @@ class ShareholdingSchema(_ProvenanceMixin):
 class DerivativesSchema(_ProvenanceMixin):
     """F&O daily data."""
 
-    isin: Series[str] = pa.Field(str_length={"min_value": 12, "max_value": 12})
+    # Note: Deliberate exception to the ISIN-primary-key rule.
+    # F&O contracts do not reliably carry ISINs in the raw data.
+    # Uniqueness key: (symbol, instrument, expiry, strike, option_type, date)
     date: Series[str]
-    instrument: Series[str]
+    symbol: Series[str]
+    instrument: Series[str] = pa.Field(isin=["FUTIDX", "FUTSTK", "OPTIDX", "OPTSTK", "FUTIVX"])
     expiry: Series[str]
     strike: Series[float] = pa.Field(ge=0.0)
     option_type: Series[str]
-    open_interest: Series[int] = pa.Field(ge=0)
+    open: Series[float] = pa.Field(ge=0.0)
+    high: Series[float] = pa.Field(ge=0.0)
+    low: Series[float] = pa.Field(ge=0.0)
+    close: Series[float] = pa.Field(ge=0.0)
+    settle_price: Series[float] = pa.Field(ge=0.0)
     volume: Series[int] = pa.Field(ge=0)
-    close: Series[float]
+    turnover: Series[float] = pa.Field(ge=0.0)
+    open_interest: Series[int] = pa.Field(ge=0)
+    change_in_oi: Series[int]
 
 
 class IndexMembershipSchema(_ProvenanceMixin):
@@ -84,6 +93,27 @@ class IndexMembershipSchema(_ProvenanceMixin):
     index_name: Series[str]
     valid_from: Series[str]
     valid_to: Series[str]
+
+
+class ParticipantOiSchema(_ProvenanceMixin):
+    """Participant-wise aggregate open interest."""
+
+    date: Series[str]
+    client_type: Series[str]
+    fut_idx_long: Series[int] = pa.Field(ge=0)
+    fut_idx_short: Series[int] = pa.Field(ge=0)
+    fut_stk_long: Series[int] = pa.Field(ge=0)
+    fut_stk_short: Series[int] = pa.Field(ge=0)
+    opt_idx_call_long: Series[int] = pa.Field(ge=0)
+    opt_idx_put_long: Series[int] = pa.Field(ge=0)
+    opt_idx_call_short: Series[int] = pa.Field(ge=0)
+    opt_idx_put_short: Series[int] = pa.Field(ge=0)
+    opt_stk_call_long: Series[int] = pa.Field(ge=0)
+    opt_stk_put_long: Series[int] = pa.Field(ge=0)
+    opt_stk_call_short: Series[int] = pa.Field(ge=0)
+    opt_stk_put_short: Series[int] = pa.Field(ge=0)
+    total_long: Series[int] = pa.Field(ge=0)
+    total_short: Series[int] = pa.Field(ge=0)
 
 
 class InstitutionalFlowSchema(_ProvenanceMixin):

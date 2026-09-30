@@ -245,10 +245,14 @@ def get_adjusted_prices(
     
     query = f"""
     WITH target_sec AS (
-        SELECT security_id, symbol
+        SELECT DISTINCT security_id, symbol
         FROM read_parquet('{chain_path}')
-        WHERE isin = $isin
-        LIMIT 1
+        WHERE security_id = (
+            SELECT security_id 
+            FROM read_parquet('{chain_path}') 
+            WHERE isin = $isin 
+            LIMIT 1
+        )
     ),
     raw_prices AS (
         SELECT p.date, p.isin, p.open, p.high, p.low, p.close, p.prev_close, p.volume
@@ -330,3 +334,79 @@ def get_adjusted_prices(
     except duckdb.IOException:
         return pd.DataFrame()
 
+
+def get_fo_contracts(
+    lakehouse: Lakehouse,
+    isin: str,
+    start_date: date,
+    end_date: date,
+    asof: date,
+) -> pd.DataFrame:
+    """Return point-in-time derivatives contracts for an ISIN.
+    
+    This resolves the provided ISIN to its underlying continuous security_id,
+    and then fetches all F&O rows for any symbol historically associated 
+    with that security_id within the requested date range, safely bridging 
+    symbol changes.
+    
+    Args:
+        lakehouse: Lakehouse instance.
+        isin: The ISIN to fetch contracts for.
+        start_date: History start date.
+        end_date: History end date.
+        asof: The point-in-time knowledge date (currently only limits 
+              isin_chain resolution bounds).
+              
+    Returns:
+        DataFrame with F&O rows.
+    """
+    logger.debug(
+        "executing_pit_fo_contracts",
+        isin=isin,
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        asof=asof.isoformat(),
+    )
+    
+    fo_path = (lakehouse.silver_dir / "derivatives" / "**/*.parquet").as_posix()
+    chain_path = (lakehouse.silver_dir / "isin_chain" / "**/*.parquet").as_posix()
+    
+    query = f"""
+    WITH target_sec AS (
+        SELECT DISTINCT security_id, symbol
+        FROM read_parquet('{chain_path}')
+        WHERE security_id = (
+            SELECT security_id 
+            FROM read_parquet('{chain_path}') 
+            WHERE isin = $isin 
+              AND valid_from <= $asof
+              AND (valid_to IS NULL OR valid_to > $asof)
+            LIMIT 1
+        )
+    )
+    SELECT d.*
+    FROM read_parquet(
+        '{fo_path}',
+        hive_partitioning = true,
+        union_by_name = true
+    ) d
+    JOIN target_sec ts ON d.symbol = ts.symbol
+    WHERE d.date >= $start_date 
+      AND d.date <= $end_date
+    ORDER BY d.date, d.expiry, d.strike, d.option_type
+    """
+    
+    try:
+        with lakehouse.connection() as cur:
+            df = cur.execute(
+                query, 
+                {
+                    "isin": isin, 
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "asof": asof.isoformat()
+                }
+            ).df()
+            return df
+    except duckdb.IOException:
+        return pd.DataFrame()

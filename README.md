@@ -4,7 +4,7 @@ A **point-in-time correct, survivorship-bias-free** systematic research and back
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
 ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-orange)
-![Tests](https://img.shields.io/badge/Tests-70%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-78%20passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 
@@ -36,7 +36,7 @@ A `Source` base class provides a standardised pipeline: **fetch → parse → va
 | NSE Corporate Actions | `corporate_actions` | 21,959 | 2015-01 → 2024-12 | ✅ Backfilled |
 | NIFTY 50 History (Wikipedia) | `index_membership` | 77 intervals | 2012-01 → 2025-09 | ✅ Survivorship-free |
 | yfinance Smoke Test | `fundamentals_smoke` | 54 | Recent quarters | ✅ Smoke test only |
-| NSE F&O Bhavcopy | `derivatives` | — | — | 🔲 Source built, not backfilled |
+| NSE F&O Bhavcopy | `derivatives` | 243,525,636 | 2016-03 → 2024-12 | ✅ Backfilled |
 | NSE Participant OI | `participant_oi` | — | — | 🔲 Source built, not backfilled |
 | NSE FII/DII | `fii_dii` | — | — | 🔲 Source built, not backfilled |
 | NSE Bulk/Block Deals | `bulk_block_deals` | — | — | 🔲 Source built, not backfilled |
@@ -72,18 +72,23 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - Purged Walk-Forward Cross-Validation with explicit embargo constraints.
 - PBO calculation structure defined but explicitly masked pending multi-factor capabilities.
 
-### 🔲 Phase 6 — Advanced Analytics & Derivatives (Not Started)
-- Open Interest (OI) buildup classification.
-- FII/DII cash flow tracking.
+### 🔄 Phase 6 — Advanced Analytics & Derivatives (In Progress)
+- **F&O Bhavcopy:** ✅ Backfilled and PIT-validated (`get_fo_contracts` implemented).
+- **Participant OI:** 🔲 Not started.
+- **FII/DII Cash Flow:** 🔲 Not started.
+- **Bulk/Block Deals:** 🔲 Not started.
+- **Shareholding:** 🔲 Not started.
+- **Derivatives-based Factors:** 🔲 Not started (e.g. OI buildup classification). Only raw contract-level backfill and PIT-safe retrieval is complete; no analytics or F&O cost modeling is implemented yet.
 
 ### ✅ Phase 7 — Statutory Cost & Execution Engine (Complete)
 - Full Indian cost model (7 statutory charges including STT, Exchange, SEBI, Stamp Duty, DP, GST with date-effective rates).
 - Clean mathematical separation between Real (cost-adjusted) and Paper (zero-cost) portfolios.
 
-### ✅ Phase 8 — AI Agent Integration (MCP) (WIP)
+### ✅ Phase 8 — AI Agent Integration (MCP) (Complete)
 - **MCP Server (TypeScript)**: Model Context Protocol integration, allowing AI agents direct access to factor data, universe construction, and backtesting.
-- **Verified Working:** Stdio transport bridge successfully round-trips tool calls (e.g., `run_backtest`, `list_factors`) and enforces token budgeting via `shaping.ts`.
-- **Missing:** Remote HTTP+SSE transport with bearer auth is not yet implemented.
+- **Verified Working:** Both Stdio and remote HTTP+SSE transports successfully round-trip tool calls (e.g., `run_backtest`, `list_factors`). 
+- **Security:** HTTP+SSE transport enforces Bearer token authentication against configured environment variables.
+- **Shaping:** Enforces token budgeting via `shaping.ts` across both transports to prevent AI context overflow.
 
 ### ✅ Phase 9 — Cross-Sectional Backtesting (Complete)
 > **Note:** The Phase 9.1 engine update successfully fixed historical "split amnesia" (where old ISIN histories were stranded). The engine now correctly stitches ISINs and applies point-in-time backward split/bonus adjustments without lookahead bias, restoring the survivorship-free NIFTY 50 universe. While `index_membership` coverage extends from 2012–2024, factor-based backtesting is only valid from **~2017-03 onward** because `equity_daily` price data begins in 2016-03, requiring a ~380-day lookback buffer to compute the first valid momentum factors.
@@ -92,9 +97,10 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - **Data Layer**: DuckDB over partitioned Parquet, Postgres for metadata, 3-state gap classifier, trading calendar derived from bhavcopy gaps.
 - **Identity Layer**: `security_id` serves as the stable primary key for index membership. The `isin_chain` table resolves a `security_id` to its active ISIN as of a given `knowledge_date`. (This replaces the earlier approach of hardcoding ISINs directly in `index_membership`).
 - **Price Layer**: `get_adjusted_prices` (in `store/pit.py`) applies a cumulative split/bonus adjustment from `corporate_actions`. It is point-in-time safe (only applies actions with `ex_date <= asof`) and is completely agnostic to whether the adjustment coincides with an ISIN change. (Both split and bonus mathematical structures are fully validated).
+- **Derivatives Layer**: `get_fo_contracts` (in `store/pit.py`) resolves an ISIN to its continuous `security_id` via `isin_chain`, then fetches all F&O rows for any symbol historically associated with that identity within the requested date range.
 - **Universe Validation**: The `BacktestEngine.run()` method enforces a strict `ValueError` guard. All constituents *must* have valid factor history unless explicitly listed in `MISSING_DATA_WAIVERS`. True structural exceptions (JIOFIN demerger, LTIM merger, BAJAJHLD) are explicitly waived.
 
-### 🔲 Phase 10 — Production Reporting (Not Started)
+### ✅ Phase 10 — Production Reporting (Complete)
 - `FactorContext` + `decile-report` CLI command for generating PDF tearsheets.
 - Automated daily strategy tracking.
 
@@ -228,7 +234,7 @@ All data comes from **free, public endpoints**. No paid API keys are used.
 | Polars for ingestion, pandas for research | Polars is faster for I/O-heavy parsing; pandas for vectorbt ecosystem compatibility. |
 | UUID-named Parquet files per write | Prevents DuckDB `OVERWRITE_OR_IGNORE` from wiping partition directories. |
 | 200-day max staleness for fundamentals | An 11-month-old quarterly result is barely different from missing data. No median imputation. |
-| `knowledge_date` on every row | The single field that prevents lookahead bias across the entire system. |
+| `knowledge_date` on every row | The single field that prevents lookahead bias across the entire system. **Caveat**: For F&O data from 2016-2018, the NSE server migration in 2019 overwrote timestamps, making `knowledge_date = trade_date` an inference drawn from post-2019 consistency rather than a mathematically proven fact for those specific years. |
 
 ## License
 
