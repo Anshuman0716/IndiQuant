@@ -37,11 +37,11 @@ A `Source` base class provides a standardised pipeline: **fetch → parse → va
 | NIFTY 50 History (Wikipedia) | `index_membership` | 77 intervals | 2012-01 → 2025-09 | ✅ Survivorship-free |
 | yfinance Smoke Test | `fundamentals_smoke` | 54 | Recent quarters | ✅ Smoke test only |
 | NSE F&O Bhavcopy | `derivatives` | 243,525,636 | 2016-03 → 2024-12 | ✅ Backfilled |
-| NSE Participant OI | `participant_oi` | 10,880 | 2016-05 → 2024-12 | ✅ Backfilled |
-| NSE FII/DII | `fii_dii` | — | — | ⛔ No viable free historical source |
-| NSE Bulk/Block Deals | `bulk_block_deals` | — | — | ⛔ Historical API WAF-blocked |
-| NSE Shareholding | `shareholding` | — | — | 🔲 Not attempted |
-| NSE Fundamentals | `fundamentals` | — | — | ⛔ No free PIT-correct source |
+| NSE Participant OI | `participant_oi` | 10,880 | 2016-03 → 2024-12 | ✅ Backfilled (2,176/2,176 trading days; [checksum caveat](#known-caveats)) |
+| NSE FII/DII | `fii_dii` | — | — | ⛔ Investigated — no viable free historical source |
+| NSE Bulk/Block Deals | `bulk_block_deals` | — | — | ⛔ Investigated — historical API WAF-blocked |
+| NSE Shareholding | `shareholding` | — | — | 🔲 Not attempted, deprioritized |
+| NSE Fundamentals | `fundamentals` | — | — | ⛔ Investigated — no free PIT-correct source (lookahead bias on easy sources; XBRL viable but very-high-effort) |
 
 Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowledge_date`.
 
@@ -235,6 +235,7 @@ All data comes from **free, public endpoints**. No paid API keys are used.
 | UUID-named Parquet files per write | Prevents DuckDB `OVERWRITE_OR_IGNORE` from wiping partition directories. |
 | 200-day max staleness for fundamentals | An 11-month-old quarterly result is barely different from missing data. No median imputation. |
 | `knowledge_date` on every row | The single field that prevents lookahead bias across the entire system. **Caveat**: For F&O data from 2016-2018, the NSE server migration in 2019 overwrote timestamps, making `knowledge_date = trade_date` an inference drawn from post-2019 consistency rather than a mathematically proven fact for those specific years. |
+| Participant OI checksum caveat | NSE's raw `TOTAL` row fails vertical/horizontal checksums on 821 of 2,176 trading days (37.7%), but all mismatches are bounded to ±2 contracts out of millions. Two distinct failure modes identified: stochastic vertical mismatches (pre-June 2021) and a structural horizontal aggregation bug (post-June 25, 2021). Impact on systematic factors is statistically zero; the lakehouse ingests exactly what the NSE publishes. |
 
 ## License
 
