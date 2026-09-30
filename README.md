@@ -37,11 +37,11 @@ A `Source` base class provides a standardised pipeline: **fetch → parse → va
 | NIFTY 50 History (Wikipedia) | `index_membership` | 77 intervals | 2012-01 → 2025-09 | ✅ Survivorship-free |
 | yfinance Smoke Test | `fundamentals_smoke` | 54 | Recent quarters | ✅ Smoke test only |
 | NSE F&O Bhavcopy | `derivatives` | 243,525,636 | 2016-03 → 2024-12 | ✅ Backfilled |
-| NSE Participant OI | `participant_oi` | — | — | 🔲 Source built, not backfilled |
-| NSE FII/DII | `fii_dii` | — | — | 🔲 Source built, not backfilled |
-| NSE Bulk/Block Deals | `bulk_block_deals` | — | — | 🔲 Source built, not backfilled |
-| NSE Shareholding | `shareholding` | — | — | 🔲 Source built, not backfilled |
-| NSE Fundamentals | `fundamentals` | — | — | ⛔ NSE API blocked for historical data |
+| NSE Participant OI | `participant_oi` | 10,880 | 2016-05 → 2024-12 | ✅ Backfilled |
+| NSE FII/DII | `fii_dii` | — | — | ⛔ No viable free historical source |
+| NSE Bulk/Block Deals | `bulk_block_deals` | — | — | ⛔ Historical API WAF-blocked |
+| NSE Shareholding | `shareholding` | — | — | 🔲 Not attempted |
+| NSE Fundamentals | `fundamentals` | — | — | ⛔ No free PIT-correct source |
 
 Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowledge_date`.
 
@@ -74,10 +74,10 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 
 ### 🔄 Phase 6 — Advanced Analytics & Derivatives (In Progress)
 - **F&O Bhavcopy:** ✅ Backfilled and PIT-validated (`get_fo_contracts` implemented).
-- **Participant OI:** 🔲 Not started.
-- **FII/DII Cash Flow:** 🔲 Not started.
-- **Bulk/Block Deals:** 🔲 Not started.
-- **Shareholding:** 🔲 Not started.
+- **Participant OI:** ✅ Backfilled and PIT-validated (2,176 trading days, 2016-2024; two documented NSE-side rounding artifacts bounded to ±2 contracts).
+- **FII/DII Cash Flow:** ⛔ Investigated — blocked, no viable free historical source for the full FII+DII cash-market scope as of 2026-09-30. NSE live API blocks historical queries; legacy NSE/BSE archive endpoints are dead; SEBI's FPI archive is scope-mismatched (FPI-only, includes primary market).
+- **Bulk/Block Deals:** ⛔ Investigated — historical backfill blocked by endpoint-specific WAF (`/api/historical/bulk-deals` returns 503 even with cookie priming that works for corporate_actions). Live snapshot works for current-day only; forward capture out of scope since it can't populate the 2017-2024 backtest window.
+- **Shareholding:** 🔲 Not attempted, deprioritized — expected to face the same WAF constraints as bulk/block deals and FII/DII.
 - **Derivatives-based Factors:** 🔲 Not started (e.g. OI buildup classification). Only raw contract-level backfill and PIT-safe retrieval is complete; no analytics or F&O cost modeling is implemented yet.
 
 ### ✅ Phase 7 — Statutory Cost & Execution Engine (Complete)
