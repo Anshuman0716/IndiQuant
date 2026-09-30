@@ -61,9 +61,11 @@ def backfill(
     from indiquant.ingest.sources.index_membership import IndexMembershipSource
     from indiquant.ingest.sources.nse_bhavcopy import EquityBhavcopySource
     from indiquant.ingest.sources.nse_fo_bhavcopy import FoBhavcopySource
+    from indiquant.ingest.sources.nse_fundamentals_yfinance_smoke import (
+        YFinanceFundamentalsSmokeSource,
+    )
     from indiquant.ingest.sources.nse_participant_oi import ParticipantOiSource
     from indiquant.ingest.sources.shareholding import ShareholdingSource
-    from indiquant.ingest.sources.nse_fundamentals_yfinance_smoke import YFinanceFundamentalsSmokeSource
     from indiquant.logging import setup_logging
     from indiquant.store.lakehouse import Lakehouse
 

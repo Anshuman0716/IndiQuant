@@ -1,13 +1,14 @@
 """Trial registry for anti-overfitting harness."""
+
 import functools
 import hashlib
 import inspect
 import json
+import subprocess
 import uuid
 from datetime import datetime
-import pandas as pd
+
 import structlog
-import subprocess
 
 from indiquant.config.settings import IndiQuantSettings
 
@@ -34,6 +35,7 @@ class TrialRegistry:
 
     def _init_db(self):
         import duckdb
+
         with duckdb.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE SEQUENCE IF NOT EXISTS trial_seq;
@@ -61,39 +63,55 @@ class TrialRegistry:
 
     def record_trial(self, trial_data: dict):
         import duckdb
+
         trial_data["run_id"] = trial_data.get("run_id", str(uuid.uuid4()))
         trial_data["timestamp"] = datetime.now()
         trial_data["git_sha"] = _get_git_sha()
-        
+
         # Hash params
         if "params" in trial_data:
             trial_data["params_json"] = json.dumps(trial_data["params"])
             trial_data["config_hash"] = _hash_config(trial_data["params"])
             del trial_data["params"]
-            
+
         # Ensure all columns exist
         cols = [
-            "run_id", "timestamp", "git_sha", "config_hash", "strategy_name", 
-            "universe_spec", "start_date", "end_date", "params_json", 
-            "gross_sharpe", "net_sharpe", "net_cagr", "max_dd", 
-            "turnover", "n_trades", "data_snapshot_hash", "tags", "notes"
+            "run_id",
+            "timestamp",
+            "git_sha",
+            "config_hash",
+            "strategy_name",
+            "universe_spec",
+            "start_date",
+            "end_date",
+            "params_json",
+            "gross_sharpe",
+            "net_sharpe",
+            "net_cagr",
+            "max_dd",
+            "turnover",
+            "n_trades",
+            "data_snapshot_hash",
+            "tags",
+            "notes",
         ]
-        
-        row = {c: trial_data.get(c, None) for c in cols}
-        
+
+        row = {c: trial_data.get(c) for c in cols}
+
         with duckdb.connect(self.db_path) as conn:
             conn.execute(
                 f"""
-                INSERT INTO trials ({', '.join(cols)}) 
-                VALUES ({', '.join(['?'] * len(cols))})
+                INSERT INTO trials ({", ".join(cols)}) 
+                VALUES ({", ".join(["?"] * len(cols))})
                 """,
-                [row[c] for c in cols]
+                [row[c] for c in cols],
             )
-            
+
         logger.info("recorded_trial", run_id=row["run_id"], strategy=row["strategy_name"])
 
-    def trial_count(self, strategy_name: str, since: datetime = None) -> int:
+    def trial_count(self, strategy_name: str, since: datetime | None = None) -> int:
         import duckdb
+
         with duckdb.connect(self.db_path) as conn:
             query = "SELECT COUNT(*) FROM trials WHERE strategy_name = ?"
             args = [strategy_name]
@@ -106,6 +124,7 @@ class TrialRegistry:
 
 def record_run(strategy_name: str):
     """Decorator to automatically record a backtest run to the registry."""
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -114,14 +133,14 @@ def record_run(strategy_name: str):
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
             params = bound.arguments
-            
+
             # Execute strategy
             metrics = func(*args, **kwargs)
-            
+
             # Reconstruct trial data
             settings = IndiQuantSettings()
             registry = TrialRegistry(settings)
-            
+
             trial_data = {
                 "strategy_name": strategy_name,
                 "universe_spec": params.get("index_name", "ALL"),
@@ -139,5 +158,7 @@ def record_run(strategy_name: str):
             }
             registry.record_trial(trial_data)
             return metrics
+
         return wrapper
+
     return decorator

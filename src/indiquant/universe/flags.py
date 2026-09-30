@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-import duckdb
 import structlog
 
 from indiquant.store.lakehouse import Lakehouse
@@ -19,6 +18,7 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class FlagResult:
     """Result of flag screening."""
+
     passed: list[str]
     rejected: dict[str, str]  # ISIN -> Reason for rejection
     status: dict[str, Any]  # Explicit check statuses e.g. {"asm": "unchecked"}
@@ -50,17 +50,17 @@ def screen_flags(
     if not isins:
         return FlagResult(passed=[], rejected={}, status={})
 
-    # TODO: Implement robust checks when the specific source files 
+    # TODO: Implement robust checks when the specific source files
     # (MWPL for F&O ban, Surveillance lists for ASM/GSM, series data for T2T)
     # are fully integrated into the lakehouse silver layer.
-    
+
     status = {
         "t2t": "unchecked",
         "asm_gsm": "unchecked",
         "suspended": "unchecked",
         "fo_ban": "unchecked",
     }
-    
+
     passed = list(isins)
     rejected: dict[str, str] = {}
 

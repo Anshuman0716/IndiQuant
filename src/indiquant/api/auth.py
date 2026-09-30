@@ -1,7 +1,7 @@
 import hashlib
-import hmac
-from fastapi import Security, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from fastapi import HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 security = HTTPBearer()
 
@@ -12,11 +12,12 @@ VALID_TOKENS_HASHES = {
     "d92729e25246d1ff7564af74b68d72a9aa387876c6db321ee5bcaaa77b077d6b": "user_1"
 }
 
+
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     token = credentials.credentials
     # Hash the provided token
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    
+
     if token_hash not in VALID_TOKENS_HASHES:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

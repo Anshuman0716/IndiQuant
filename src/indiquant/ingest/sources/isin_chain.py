@@ -4,14 +4,15 @@ Maps a stable security_id (hash of canonical symbol) to validity-dated ISINs.
 """
 
 import hashlib
-import polars as pl
-import structlog
+
 import duckdb
 import pandas as pd
+import polars as pl
+import structlog
 
 from indiquant.ingest.base import Source
-from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.ingest.calendar import TradingCalendar
+from indiquant.ingest.models import RawPayload, ValidationIssue
 
 logger = structlog.get_logger(__name__)
 
@@ -23,7 +24,7 @@ def generate_security_id(symbol: str) -> str:
 
 class IsinChainSource(Source):
     """Maps security_id to validity-dated ISIN intervals.
-    
+
     Reads from equity_daily to discover the exact dates each ISIN
     was active for each canonical symbol.
     """
@@ -48,7 +49,9 @@ class IsinChainSource(Source):
                 self.content = content
                 self.status_code = 200
                 self.headers = {}
-            def raise_for_status(self): pass
+
+            def raise_for_status(self):
+                pass
 
         try:
             with self.lakehouse.connection() as cur:
@@ -60,10 +63,7 @@ class IsinChainSource(Source):
                     ORDER BY symbol, isin
                 """
                 df = cur.execute(query).df()
-                if df.empty:
-                    content = b"empty"
-                else:
-                    content = df.to_csv(index=False).encode('utf-8')
+                content = b"empty" if df.empty else df.to_csv(index=False).encode("utf-8")
         except duckdb.IOException:
             logger.warning("isin_chain_failed", msg="equity_daily not found.")
             content = b"empty"
@@ -74,23 +74,24 @@ class IsinChainSource(Source):
         """Parse isin chains from the serialized lakehouse payload."""
         if not raw.body or raw.body == b"empty":
             return pl.DataFrame()
-            
+
         import io
+
         segments_df = pd.read_csv(io.BytesIO(raw.body))
-            
+
         cal = TradingCalendar()
         adj = {i: set() for i in segments_df.index}
 
         def add_edges(group_col):
             groups = segments_df.groupby(group_col)
             for name, group in groups:
-                sorted_group = group.sort_values('first_seen')
+                sorted_group = group.sort_values("first_seen")
                 indices = sorted_group.index.tolist()
                 for i in range(len(indices) - 1):
                     idx1 = indices[i]
-                    idx2 = indices[i+1]
-                    end_date = pd.to_datetime(segments_df.loc[idx1, 'last_seen']).date()
-                    start_date = pd.to_datetime(segments_df.loc[idx2, 'first_seen']).date()
+                    idx2 = indices[i + 1]
+                    end_date = pd.to_datetime(segments_df.loc[idx1, "last_seen"]).date()
+                    start_date = pd.to_datetime(segments_df.loc[idx2, "first_seen"]).date()
                     if start_date <= end_date:
                         adj[idx1].add(idx2)
                         adj[idx2].add(idx1)
@@ -101,17 +102,17 @@ class IsinChainSource(Source):
                             adj[idx2].add(idx1)
                         else:
                             logger.warning(
-                                "adjacency_check_failed", 
-                                col=group_col, 
-                                val=name, 
-                                end=end_date.isoformat(), 
-                                start=start_date.isoformat(), 
-                                gap=len(tdays)-2
+                                "adjacency_check_failed",
+                                col=group_col,
+                                val=name,
+                                end=end_date.isoformat(),
+                                start=start_date.isoformat(),
+                                gap=len(tdays) - 2,
                             )
-                            
+
         # Build edges based on shared symbol or shared ISIN
-        add_edges('symbol')
-        add_edges('isin')
+        add_edges("symbol")
+        add_edges("isin")
 
         # Find connected components (BFS)
         visited = set()
@@ -131,32 +132,37 @@ class IsinChainSource(Source):
                 components.append(comp)
 
         # Assign a single security_id to each connected component
-        segments_df['security_id'] = ""
+        segments_df["security_id"] = ""
         for component in components:
             comp_df = segments_df.loc[component]
             # Canonical symbol is the earliest symbol in the component
-            canonical_symbol = comp_df.sort_values('first_seen').iloc[0]['symbol']
+            canonical_symbol = comp_df.sort_values("first_seen").iloc[0]["symbol"]
             sec_id = generate_security_id(canonical_symbol)
-            segments_df.loc[component, 'security_id'] = sec_id
+            segments_df.loc[component, "security_id"] = sec_id
 
         # Calculate valid_to by looking ahead within each security_id
-        segments_df = segments_df.sort_values(['security_id', 'first_seen'])
-        segments_df['valid_from'] = segments_df['first_seen']
-        segments_df['valid_to'] = segments_df.groupby(['security_id'])['first_seen'].shift(-1)
-        segments_df['valid_to'] = segments_df['valid_to'].fillna(pd.to_datetime('9999-12-31').date())
+        segments_df = segments_df.sort_values(["security_id", "first_seen"])
+        segments_df["valid_from"] = segments_df["first_seen"]
+        segments_df["valid_to"] = segments_df.groupby(["security_id"])["first_seen"].shift(-1)
+        segments_df["valid_to"] = segments_df["valid_to"].fillna(
+            pd.to_datetime("9999-12-31").date()
+        )
 
         records = []
         for _, row in segments_df.iterrows():
-            if not row['symbol']: continue
-            records.append({
-                "security_id": row['security_id'],
-                "symbol": row['symbol'],
-                "isin": row['isin'],
-                "valid_from": pd.to_datetime(row['valid_from']).date(),
-                "valid_to": pd.to_datetime(row['valid_to']).date(),
-                "knowledge_date": pd.to_datetime(row['valid_from']).date()
-            })
-            
+            if not row["symbol"]:
+                continue
+            records.append(
+                {
+                    "security_id": row["security_id"],
+                    "symbol": row["symbol"],
+                    "isin": row["isin"],
+                    "valid_from": pd.to_datetime(row["valid_from"]).date(),
+                    "valid_to": pd.to_datetime(row["valid_to"]).date(),
+                    "knowledge_date": pd.to_datetime(row["valid_from"]).date(),
+                }
+            )
+
         return pl.DataFrame(records)
 
     def _validate_rules(self, df: pl.DataFrame) -> list[ValidationIssue]:

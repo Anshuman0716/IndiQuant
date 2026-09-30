@@ -21,7 +21,7 @@ def adjust_dataframe(
     adjust_for: list[Literal["split", "bonus", "dividend"]] | None = None,
 ) -> pd.DataFrame:
     """Apply corporate actions to an existing DataFrame of prices.
-    
+
     The DataFrame must have columns: isin, date, open, high, low, close, volume.
     Adjustments are relative to the latest date for each ISIN in the DataFrame.
     """
@@ -32,15 +32,15 @@ def adjust_dataframe(
         adjust_for = ["split", "bonus", "dividend"]
 
     start_date = df["date"].min()
-    if isinstance(start_date, pd.Timestamp) or isinstance(start_date, date):
+    if isinstance(start_date, (pd.Timestamp, date)):
         start_date = start_date.isoformat()
-        
+
     end_date = df["date"].max()
-    if isinstance(end_date, pd.Timestamp) or isinstance(end_date, date):
+    if isinstance(end_date, (pd.Timestamp, date)):
         end_date = end_date.isoformat()
 
     isins = df["isin"].unique().tolist()
-    
+
     # We chunk ISINs if there are too many to avoid query size limits,
     # but DuckDB can handle thousands easily.
     isin_list = "'" + "','".join(isins) + "'"
@@ -58,9 +58,9 @@ def adjust_dataframe(
         with lakehouse.connection() as cur:
             ca_df = cur.execute(ca_query).df()
     except Exception:
-        ca_df = pd.DataFrame(columns=[
-            "isin", "ex_date", "action_type", "ratio_from", "ratio_to", "amount_per_share"
-        ])
+        ca_df = pd.DataFrame(
+            columns=["isin", "ex_date", "action_type", "ratio_from", "ratio_to", "amount_per_share"]
+        )
 
     if ca_df.empty or not adjust_for:
         return _add_unadjusted_columns(df)
@@ -70,7 +70,7 @@ def adjust_dataframe(
         return _add_unadjusted_columns(df)
 
     df_sorted = df.sort_values(["isin", "date"]).reset_index(drop=True)
-    
+
     # Get prev_close for each date
     df_sorted["prev_close"] = df_sorted.groupby("isin")["close"].shift(1)
 
@@ -96,7 +96,7 @@ def adjust_dataframe(
         )
 
     mult_df = pd.DataFrame(multipliers)
-    
+
     if not mult_df.empty:
         # Aggregate multiple CA on the same day
         mult_df = mult_df.groupby(["isin", "date"], as_index=False).prod()
@@ -109,11 +109,11 @@ def adjust_dataframe(
     # Cumulative product backwards
     # Reverse sort
     df_adj = df_adj.sort_values(["isin", "date"], ascending=[True, False]).reset_index(drop=True)
-    
+
     df_adj["tech_cum"] = df_adj.groupby("isin")["tech_mult"].cumprod().shift(1).fillna(1.0)
     df_adj["tot_cum"] = df_adj.groupby("isin")["tot_mult"].cumprod().shift(1).fillna(1.0)
     df_adj["v_cum"] = df_adj.groupby("isin")["v_mult"].cumprod().shift(1).fillna(1.0)
-    
+
     # Sort back to chronological
     df_adj = df_adj.sort_values(["isin", "date"]).reset_index(drop=True)
 
@@ -128,18 +128,42 @@ def adjust_dataframe(
     if "prev_close" in df.columns:
         df_adj["adj_prev_close"] = df_adj["prev_close"] * df_adj["tech_cum"]
         cols = [
-            "isin", "date", "open", "high", "low", "close", "prev_close", "volume",
-            "adj_open", "adj_high", "adj_low", "adj_close", "adj_prev_close", "adj_tot_close", "adj_volume"
+            "isin",
+            "date",
+            "open",
+            "high",
+            "low",
+            "close",
+            "prev_close",
+            "volume",
+            "adj_open",
+            "adj_high",
+            "adj_low",
+            "adj_close",
+            "adj_prev_close",
+            "adj_tot_close",
+            "adj_volume",
         ]
         # Actually let's just recompute it on the adjusted close to be safe.
-        df_adj["prev_close"] = df["prev_close"] # original
+        df_adj["prev_close"] = df["prev_close"]  # original
         df_adj["adj_prev_close"] = df_adj.groupby("isin")["adj_close"].shift(1)
-        
+
         return df_adj[cols]
-    
+
     cols = [
-        "isin", "date", "open", "high", "low", "close", "volume",
-        "adj_open", "adj_high", "adj_low", "adj_close", "adj_tot_close", "adj_volume"
+        "isin",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "adj_open",
+        "adj_high",
+        "adj_low",
+        "adj_close",
+        "adj_tot_close",
+        "adj_volume",
     ]
     return df_adj[cols]
 
@@ -156,10 +180,10 @@ def adjusted_prices(
     Adjustments are computed relative to the `end` date. A price on date T
     is multiplied by the cumulative product of all adjustment factors that
     went ex-date between T (exclusive) and end (inclusive).
-    
+
     Generates two series of adjustments:
     - Technical (split/bonus only) applied to open/high/low/close/volume.
-    - Total Return (split/bonus/dividend) applied only to a separate 
+    - Total Return (split/bonus/dividend) applied only to a separate
       `adj_tot_close` column for benchmark tracking.
 
     Args:
@@ -196,6 +220,7 @@ def adjusted_prices(
 
     return adjust_dataframe(df, lakehouse, adjust_for)
 
+
 def _add_unadjusted_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["adj_open"] = df["open"]
@@ -231,5 +256,9 @@ def _calc_vol_mult(row: pd.Series) -> float:
     if action == "split":
         return float(row["ratio_from"] / row["ratio_to"]) if row["ratio_to"] else 1.0
     elif action == "bonus":
-        return float((row["ratio_from"] + row["ratio_to"]) / row["ratio_to"]) if row["ratio_to"] else 1.0
+        return (
+            float((row["ratio_from"] + row["ratio_to"]) / row["ratio_to"])
+            if row["ratio_to"]
+            else 1.0
+        )
     return 1.0

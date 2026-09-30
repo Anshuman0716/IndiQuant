@@ -8,7 +8,7 @@ for factors.
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any, Literal
+from typing import Literal
 
 import duckdb
 import pandas as pd
@@ -19,12 +19,15 @@ from indiquant.store.lakehouse import Lakehouse
 logger = structlog.get_logger(__name__)
 
 # Allowed pillars in the Tapetide Score
-Pillar = Literal["QUALITY", "VALUATION", "GROWTH", "HEALTH", "MOMENTUM", "OWNERSHIP", "MICROSTRUCTURE"]
+Pillar = Literal[
+    "QUALITY", "VALUATION", "GROWTH", "HEALTH", "MOMENTUM", "OWNERSHIP", "MICROSTRUCTURE"
+]
 
 
 @dataclass
 class FactorMetadata:
     """Introspectable metadata for a factor. Designed for MCP exposure."""
+
     id: str
     pillar: Pillar
     direction: int  # +1 if high is good, -1 if low is good
@@ -50,10 +53,11 @@ class FactorRegistry:
         unit: str,
     ) -> Callable[[Callable[..., pd.Series]], Callable[..., pd.Series]]:
         """Decorator to register a factor function."""
+
         def decorator(func: Callable[..., pd.Series]) -> Callable[..., pd.Series]:
             if id in self._factors:
                 raise ValueError(f"Factor {id} already registered.")
-            
+
             self._factors[id] = FactorMetadata(
                 id=id,
                 pillar=pillar,
@@ -64,6 +68,7 @@ class FactorRegistry:
                 func=func,
             )
             return func
+
         return decorator
 
     def list_factors(self) -> list[FactorMetadata]:
@@ -114,9 +119,7 @@ class FactorContext:
             return self._prices_cache[cache_key]
 
         start_date = asof - timedelta(days=lookback_days)
-        table_path = (
-            self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet"
-        ).as_posix()
+        table_path = (self.lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
 
         query = f"""
         SELECT
@@ -143,8 +146,9 @@ class FactorContext:
                     query,
                     {"start": start_date.isoformat(), "asof": asof.isoformat()},
                 ).df()
-                
+
             from indiquant.universe.adjust import adjust_dataframe
+
             # Apply corporate actions (splits, bonuses) backwards from the asof date.
             df = adjust_dataframe(df, self.lakehouse, adjust_for=["split", "bonus", "dividend"])
             if not df.empty:
@@ -155,7 +159,7 @@ class FactorContext:
                 df["close"] = df["adj_close"]
                 df["prev_close"] = df["adj_prev_close"]
                 df["volume"] = df["adj_volume"]
-                
+
         except duckdb.IOException:
             logger.warning("get_prices_no_data", asof=asof.isoformat())
             df = pd.DataFrame()
@@ -261,27 +265,27 @@ class FactorContext:
         table: str = "fundamentals_smoke",
     ) -> pd.DataFrame:
         """Fetch a time-series of fundamental data up to the asof date.
-        
-        Useful for calculating TTM (trailing twelve months), CAGRs, and 
+
+        Useful for calculating TTM (trailing twelve months), CAGRs, and
         historical stability metrics.
-        
+
         Args:
             asof: Point-in-time date.
             columns: Fundamental columns to return.
             lookback_years: How far back to fetch data.
             max_staleness_days: Drop rows where knowledge_date is too old.
-            
+
         Returns:
             DataFrame sorted by ['isin', 'quarter_end'] containing all valid
             historical filings within the lookback window.
         """
         table_path = (self.lakehouse.silver_dir / table / "**/*.parquet").as_posix()
         start_date = asof - timedelta(days=lookback_years * 365)
-        
+
         # We must select quarter_end for sorting/grouping
-        select_cols = ["isin", "quarter_end", "knowledge_date"] + columns
+        select_cols = ["isin", "quarter_end", "knowledge_date", *columns]
         select_str = ", ".join(select_cols)
-        
+
         query = f"""
         SELECT {select_str}
         FROM read_parquet(
@@ -293,40 +297,39 @@ class FactorContext:
           AND knowledge_date >= $start
         ORDER BY isin, quarter_end
         """
-        
+
         try:
             with self.lakehouse.connection() as cur:
                 df = cur.execute(
-                    query, 
-                    {"asof": asof.isoformat(), "start": start_date.isoformat()}
+                    query, {"asof": asof.isoformat(), "start": start_date.isoformat()}
                 ).df()
         except duckdb.IOException:
             logger.warning("get_fundamentals_history_no_data", asof=asof.isoformat())
             return pd.DataFrame()
-            
+
         if df.empty:
             return df
-            
-        # Enforce staleness filter (unlike get_fundamentals which returns flags, 
+
+        # Enforce staleness filter (unlike get_fundamentals which returns flags,
         # history drops stale rows outright as they shouldn't be used in rolling sums)
         kd = pd.to_datetime(df["knowledge_date"])
         days_stale = (pd.Timestamp(asof) - kd).dt.days
         df = df[days_stale <= max_staleness_days].copy()
-        
+
         return df.sort_values(["isin", "quarter_end"])
 
     def get_sectors(self, isins: pd.Series) -> pd.Series:
         """Fetch sector mappings for a given series of ISINs.
-        
+
         Args:
             isins: A pandas Series containing ISINs.
-            
+
         Returns:
             A pandas Series of the same length containing the sector strings.
             Unknown ISINs will have a sector of "Unknown".
         """
         mapping_path = (self.lakehouse.meta_dir / "sector_mapping" / "*.parquet").as_posix()
-        
+
         try:
             with self.lakehouse.connection() as cur:
                 mapping = cur.execute(
@@ -335,9 +338,9 @@ class FactorContext:
         except duckdb.IOException:
             logger.warning("sector_mapping_not_found")
             return pd.Series("Unknown", index=isins.index)
-            
+
         # Create a dict for fast mapping
-        sector_dict = dict(zip(mapping["isin"], mapping["sector"]))
-        
+        sector_dict = dict(zip(mapping["isin"], mapping["sector"], strict=False))
+
         # Map the input series
         return isins.map(sector_dict).fillna("Unknown")

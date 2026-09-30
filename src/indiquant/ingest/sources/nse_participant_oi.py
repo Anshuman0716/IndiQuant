@@ -12,6 +12,7 @@ from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.store.schemas import ParticipantOiSchema
 
+
 class ParticipantOiSource(Source):
     """NSE Participant open interest source."""
 
@@ -39,10 +40,10 @@ class ParticipantOiSource(Source):
             if "Client Type" in line:
                 header_idx = i
                 break
-        
+
         csv_data = "\n".join(lines[header_idx:])
         csv_data = csv_data.replace("\t", " ")
-        
+
         df = pl.read_csv(
             io.StringIO(csv_data),
             infer_schema_length=0,
@@ -57,52 +58,89 @@ class ParticipantOiSource(Source):
             [
                 pl.lit(raw.date.isoformat()).alias("date"),
                 pl.col("Client Type").str.strip_chars().alias("client_type"),
-                pl.col("Future Index Long").str.strip_chars().cast(pl.Float64).round(0).cast(pl.Int64).alias("fut_idx_long"),
+                pl.col("Future Index Long")
+                .str.strip_chars()
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
+                .alias("fut_idx_long"),
                 pl.col("Future Index Short")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("fut_idx_short"),
-                pl.col("Future Stock Long").str.strip_chars().cast(pl.Float64).round(0).cast(pl.Int64).alias("fut_stk_long"),
+                pl.col("Future Stock Long")
+                .str.strip_chars()
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
+                .alias("fut_stk_long"),
                 pl.col("Future Stock Short")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("fut_stk_short"),
                 pl.col("Option Index Call Long")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_idx_call_long"),
                 pl.col("Option Index Put Long")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_idx_put_long"),
                 pl.col("Option Index Call Short")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_idx_call_short"),
                 pl.col("Option Index Put Short")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_idx_put_short"),
                 pl.col("Option Stock Call Long")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_stk_call_long"),
                 pl.col("Option Stock Put Long")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_stk_put_long"),
                 pl.col("Option Stock Call Short")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_stk_call_short"),
                 pl.col("Option Stock Put Short")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("opt_stk_put_short"),
-                pl.col("Total Long Contracts").str.strip_chars().cast(pl.Float64).round(0).cast(pl.Int64).alias("total_long"),
+                pl.col("Total Long Contracts")
+                .str.strip_chars()
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
+                .alias("total_long"),
                 pl.col("Total Short Contracts")
                 .str.strip_chars()
-                .cast(pl.Float64).round(0).cast(pl.Int64)
+                .cast(pl.Float64)
+                .round(0)
+                .cast(pl.Int64)
                 .alias("total_short"),
             ]
         )

@@ -3,14 +3,18 @@
 from datetime import date
 from typing import Literal
 
-from indiquant.costs.statutory import StatutoryCostModel
+from indiquant.costs.constraints import (
+    ExecutionConstraints,
+    apply_circuit_filter,
+    apply_whole_shares,
+)
 from indiquant.costs.slippage import SlippageModel
-from indiquant.costs.constraints import ExecutionConstraints, apply_circuit_filter, apply_whole_shares
+from indiquant.costs.statutory import StatutoryCostModel
 
 
 class ExecutionModel:
     """Simulates the fill of a target order on a given day."""
-    
+
     def __init__(
         self,
         statutory: StatutoryCostModel,
@@ -22,7 +26,7 @@ class ExecutionModel:
         self.slippage = slippage
         self.constraints = constraints
         self.fill_price = fill_price
-        
+
     def simulate_fill(
         self,
         trade_date: date,
@@ -34,14 +38,14 @@ class ExecutionModel:
         mkt_close: float,
         mkt_prev_close: float,
         mkt_volume: float,
-        daily_volatility: float = 0.02, # 2% default if not provided
-        mcap_rank_pct: float = 0.10,    # Large cap default
+        daily_volatility: float = 0.02,  # 2% default if not provided
+        mcap_rank_pct: float = 0.10,  # Large cap default
         is_first_sell_of_day: bool = True,
     ) -> dict[str, float]:
         """Simulate execution of an order."""
         if target_qty <= 0:
             return {"filled_qty": 0.0, "net_cash_flow": 0.0, "total_frictional_cost": 0.0}
-            
+
         # 1. Base Fill Price
         if self.fill_price == "OPEN":
             base_price = mkt_open
@@ -50,7 +54,7 @@ class ExecutionModel:
             base_price = (mkt_high + mkt_low + mkt_close) / 3.0
         else:
             base_price = mkt_close
-            
+
         # 2. Apply Circuit Filter Constraint
         allowed_qty = target_qty
         if self.constraints.enforce_circuits:
@@ -63,38 +67,38 @@ class ExecutionModel:
                 close=mkt_close,
                 prev_close=mkt_prev_close,
             )
-            
+
         if allowed_qty <= 0:
             return {"filled_qty": 0.0, "net_cash_flow": 0.0, "total_frictional_cost": 0.0}
-            
+
         # 3. Apply Whole Share Constraint
         if self.constraints.enforce_whole_shares:
             allowed_qty = apply_whole_shares(allowed_qty)
-            
+
         if allowed_qty <= 0:
             return {"filled_qty": 0.0, "net_cash_flow": 0.0, "total_frictional_cost": 0.0}
-            
+
         # 4. Calculate Slippage (Market Impact + Spread)
         slip_res = self.slippage.calculate_slippage(
             order_qty=allowed_qty,
-            adv=mkt_volume, # Using daily volume as proxy for ADV for simplicity here
+            adv=mkt_volume,  # Using daily volume as proxy for ADV for simplicity here
             daily_volatility=daily_volatility,
             mcap_rank_pct=mcap_rank_pct,
         )
         filled_qty = slip_res["filled_qty"]
         if self.constraints.enforce_whole_shares:
             filled_qty = apply_whole_shares(filled_qty)
-            
+
         if filled_qty <= 0:
-             return {"filled_qty": 0.0, "net_cash_flow": 0.0, "total_frictional_cost": 0.0}
-             
+            return {"filled_qty": 0.0, "net_cash_flow": 0.0, "total_frictional_cost": 0.0}
+
         slip_bps = slip_res["total_slippage_bps"]
         slip_dec = slip_bps / 10000.0
-        
+
         # Adjust price based on slippage
         # Buy: price increases. Sell: price decreases.
         exec_price = base_price * (1 + slip_dec) if side == "BUY" else base_price * (1 - slip_dec)
-        
+
         # 5. Calculate Statutory Costs
         stat_costs = self.statutory.calculate_trade_cost(
             trade_date=trade_date,
@@ -104,17 +108,17 @@ class ExecutionModel:
             segment="EQ_DELIVERY",
             is_first_sell_of_day=is_first_sell_of_day,
         )
-        
+
         total_statutory = stat_costs["total"]
-        
+
         # 6. Total Cash Flow
         gross_value = filled_qty * exec_price
-        
+
         if side == "BUY":
             net_cash_flow = -1.0 * (gross_value + total_statutory)
         else:
             net_cash_flow = gross_value - total_statutory
-            
+
         # Return breakdown
         res = {
             "filled_qty": filled_qty,

@@ -202,7 +202,7 @@ class Source(ABC):
             # Ensure knowledge_date exists if not added by _promote_transform
             if "knowledge_date" not in silver_sim.columns:
                 silver_sim = silver_sim.with_columns(pl.lit("2000-01-01").alias("knowledge_date"))
-            
+
             self.schema.validate(silver_sim, lazy=True)
         except SchemaError as e:
             # We would parse the SchemaErrors here in a real impl

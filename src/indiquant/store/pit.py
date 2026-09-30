@@ -216,10 +216,10 @@ def get_adjusted_prices(
     asof: date,
 ) -> pd.DataFrame:
     """Return point-in-time adjusted prices for an ISIN.
-    
-    Prices are backward-adjusted for splits and bonuses that have an 
+
+    Prices are backward-adjusted for splits and bonuses that have an
     ex_date <= asof. This ensures no lookahead bias in returns.
-    
+
     Args:
         lakehouse: Lakehouse instance.
         isin: The ISIN to fetch prices for.
@@ -227,7 +227,7 @@ def get_adjusted_prices(
         end_date: History end date.
         asof: The point-in-time knowledge date. Only corporate actions
               on or before this date are applied.
-              
+
     Returns:
         DataFrame with date, isin, close, volume (adjusted).
     """
@@ -238,11 +238,11 @@ def get_adjusted_prices(
         end_date=end_date.isoformat(),
         asof=asof.isoformat(),
     )
-    
+
     eq_path = (lakehouse.silver_dir / "equity_daily" / "**/*.parquet").as_posix()
     ca_path = (lakehouse.silver_dir / "corporate_actions" / "**/*.parquet").as_posix()
     chain_path = (lakehouse.silver_dir / "isin_chain" / "**/*.parquet").as_posix()
-    
+
     query = f"""
     WITH target_sec AS (
         SELECT DISTINCT security_id, symbol
@@ -316,17 +316,17 @@ def get_adjusted_prices(
     LEFT JOIN date_factors f ON r.date = f.date
     ORDER BY r.date
     """
-    
+
     try:
         with lakehouse.connection() as cur:
             df = cur.execute(
-                query, 
+                query,
                 {
-                    "isin": isin, 
+                    "isin": isin,
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
-                    "asof": asof.isoformat()
-                }
+                    "asof": asof.isoformat(),
+                },
             ).df()
             # Handle the case where df is completely empty (e.g., IPO after start_date)
             # or completely NaN (e.g., no prices found).
@@ -343,20 +343,20 @@ def get_fo_contracts(
     asof: date,
 ) -> pd.DataFrame:
     """Return point-in-time derivatives contracts for an ISIN.
-    
+
     This resolves the provided ISIN to its underlying continuous security_id,
-    and then fetches all F&O rows for any symbol historically associated 
-    with that security_id within the requested date range, safely bridging 
+    and then fetches all F&O rows for any symbol historically associated
+    with that security_id within the requested date range, safely bridging
     symbol changes.
-    
+
     Args:
         lakehouse: Lakehouse instance.
         isin: The ISIN to fetch contracts for.
         start_date: History start date.
         end_date: History end date.
-        asof: The point-in-time knowledge date (currently only limits 
+        asof: The point-in-time knowledge date (currently only limits
               isin_chain resolution bounds).
-              
+
     Returns:
         DataFrame with F&O rows.
     """
@@ -367,10 +367,10 @@ def get_fo_contracts(
         end_date=end_date.isoformat(),
         asof=asof.isoformat(),
     )
-    
+
     fo_path = (lakehouse.silver_dir / "derivatives" / "**/*.parquet").as_posix()
     chain_path = (lakehouse.silver_dir / "isin_chain" / "**/*.parquet").as_posix()
-    
+
     query = f"""
     WITH target_sec AS (
         SELECT DISTINCT security_id, symbol
@@ -395,17 +395,17 @@ def get_fo_contracts(
       AND d.date <= $end_date
     ORDER BY d.date, d.expiry, d.strike, d.option_type
     """
-    
+
     try:
         with lakehouse.connection() as cur:
             df = cur.execute(
-                query, 
+                query,
                 {
-                    "isin": isin, 
+                    "isin": isin,
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
-                    "asof": asof.isoformat()
-                }
+                    "asof": asof.isoformat(),
+                },
             ).df()
             return df
     except duckdb.IOException:
