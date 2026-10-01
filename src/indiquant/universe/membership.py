@@ -6,6 +6,8 @@ ensure point-in-time correctness and survivorship-bias elimination.
 
 from datetime import date
 
+import pandas as pd
+
 from indiquant.store.lakehouse import Lakehouse
 from indiquant.store.pit import index_constituents, is_index_member
 
@@ -25,7 +27,10 @@ def constituents(
     Returns:
         List of ISINs in the index on the given date.
     """
-    return index_constituents(lakehouse, index, asof)
+    rows = index_constituents(lakehouse, index, asof)
+    if isinstance(rows, pd.DataFrame) and "isin" in rows.columns:
+        return rows["isin"].dropna().astype(str).tolist()
+    return []
 
 
 def is_member(

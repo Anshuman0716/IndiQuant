@@ -83,7 +83,7 @@ def build_universe(
     # 2. Liquidity screening
     liq_res = screen_liquidity(
         lakehouse,
-        base_isins["isin"].tolist(),
+        base_isins,
         asof,
         min_price=min_price,
         min_turnover=min_turnover,
