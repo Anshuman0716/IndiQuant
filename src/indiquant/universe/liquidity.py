@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 import duckdb
-import pandas as pd
 import structlog
 
 from indiquant.store.lakehouse import Lakehouse
