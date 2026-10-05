@@ -1,0 +1,6 @@
+isin,ex_date,action_type,ratio_from,ratio_to,source,reason
+INE296A01016,2016-09-08,split,10,2,manual,Combined subject in source
+INE296A01016,2016-09-08,bonus,1,1,manual,Combined subject in source
+INE918I01018,2022-09-13,split,5,1,manual,Combined subject in source
+INE918I01018,2022-09-13,bonus,1,1,manual,Combined subject in source
+INE040A01026,2019-09-19,split,2,1,manual,Missing from NSE source
