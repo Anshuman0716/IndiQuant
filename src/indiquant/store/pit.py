@@ -125,26 +125,17 @@ def index_constituents(
 
     table_path = (lakehouse.silver_dir / "index_membership" / "**/*.parquet").as_posix()
 
-    chain_path = (lakehouse.silver_dir / "isin_chain" / "**/*.parquet").as_posix()
-
     query = f"""
-    WITH raw_members AS (
-        SELECT security_id
-        FROM read_parquet(
-            '{table_path}',
-            hive_partitioning = true,
-            union_by_name = true
-        )
-        WHERE index_name = $index
-          AND valid_from <= $asof
-          AND (valid_to IS NULL OR valid_to > $asof)
+    SELECT DISTINCT isin
+    FROM read_parquet(
+        '{table_path}',
+        hive_partitioning = true,
+        union_by_name = true
     )
-    SELECT c.isin
-    FROM raw_members r
-    JOIN read_parquet('{chain_path}') c
-      ON r.security_id = c.security_id
-    WHERE c.valid_from <= $asof
-      AND (c.valid_to IS NULL OR c.valid_to > $asof)
+    WHERE index_name = $index
+      AND valid_from <= $asof
+      AND (valid_to IS NULL OR valid_to > $asof)
+      AND isin IS NOT NULL
     """
 
     try:
@@ -174,27 +165,17 @@ def is_index_member(
     """
     table_path = (lakehouse.silver_dir / "index_membership" / "**/*.parquet").as_posix()
 
-    chain_path = (lakehouse.silver_dir / "isin_chain" / "**/*.parquet").as_posix()
-
     query = f"""
-    WITH raw_members AS (
-        SELECT security_id, index_name, valid_from, valid_to
-        FROM read_parquet(
-            '{table_path}',
-            hive_partitioning = true,
-            union_by_name = true
-        )
-    )
     SELECT 1
-    FROM raw_members r
-    JOIN read_parquet('{chain_path}') c
-      ON r.security_id = c.security_id
-    WHERE r.index_name = $index
-      AND c.isin = $isin
-      AND r.valid_from <= $asof
-      AND (r.valid_to IS NULL OR r.valid_to > $asof)
-      AND c.valid_from <= $asof
-      AND (c.valid_to IS NULL OR c.valid_to > $asof)
+    FROM read_parquet(
+        '{table_path}',
+        hive_partitioning = true,
+        union_by_name = true
+    )
+    WHERE index_name = $index
+      AND isin = $isin
+      AND valid_from <= $asof
+      AND (valid_to IS NULL OR valid_to > $asof)
     LIMIT 1
     """
 
