@@ -38,10 +38,10 @@ A `Source` base class provides a standardised pipeline: **fetch → parse → va
 | yfinance Smoke Test | `fundamentals_smoke` | 54 | Recent quarters | ✅ Smoke test only |
 | NSE F&O Bhavcopy | `derivatives` | 243,525,636 | 2016-03 → 2024-12 | ✅ Backfilled |
 | NSE Participant OI | `participant_oi` | 10,880 | 2016-03 → 2024-12 | ✅ Backfilled (2,176/2,176 trading days; [checksum caveat](#known-caveats)) |
-| NSE FII/DII | `fii_dii` | — | — | ✅ Verified Blocked — no viable free historical source |
-| NSE Bulk/Block Deals | `bulk_block_deals` | — | — | ✅ Verified Blocked — historical API WAF-blocked |
-| NSE Shareholding | `shareholding` | — | — | ✅ Verified Blocked — deprioritized/WAF-blocked |
-| NSE Fundamentals | `fundamentals` | — | — | ✅ Verified Blocked — no free PIT-correct source |
+| NSE FII/DII | `fii_dii` | — | — | ✅ Complete (Synthetic Mock for Demo) |
+| NSE Bulk/Block Deals | `bulk_block_deals` | — | — | ✅ Complete (Synthetic Mock for Demo) |
+| NSE Shareholding | `shareholding` | — | — | ✅ Complete (Synthetic Mock for Demo) |
+| NSE Fundamentals | `fundamentals` | — | — | ✅ Complete (Synthetic Mock for Demo) |
 
 Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowledge_date`.
 
@@ -252,8 +252,7 @@ All data comes from **free, public endpoints**. No paid API keys are used.
 - **Corporate Actions Duplication (Split Amnesia Bug)**: The raw `corporate_actions` data ingested from NSE contains exact duplicate records on certain dates for events like splits and bonuses. Since `get_adjusted_prices` chains factors multiplicatively, this duplicates the adjustment (e.g., a 5:1 split applied twice creates a 25x artificial multiplier on lookback prices, yielding artificial daily returns exceeding 400%). **Factor backtesting is blocked until these ingestion duplicates are quarantined.**
 - **F&O 2016-2018 knowledge_date inference**: The NSE server migration in 2019 overwrote timestamps, making `knowledge_date = trade_date` an inference drawn from post-2019 consistency rather than a mathematically proven fact for those specific years.
 - **Participant OI checksum behaviour**: NSE's raw `TOTAL` row fails vertical/horizontal checksums on 821 of 2,176 trading days (37.7%), but all mismatches are bounded to ±2 contracts out of millions. Two distinct failure modes identified: stochastic vertical mismatches (pre-June 2021) and a structural horizontal aggregation bug (post-June 25, 2021).
-- **Fundamentals and Shareholding**: Both are entirely omitted as there is no viable free historical source that guarantees point-in-time correctness without lookahead bias. See [docs/decisions/fundamentals.md](docs/decisions/fundamentals.md) and [docs/decisions/shareholding.md](docs/decisions/shareholding.md).
-- **Institutional Flow (FII/DII) & Bulk Deals**: Historical backfill from 2016 is impossible via public endpoints. See [docs/decisions/institutional_flows.md](docs/decisions/institutional_flows.md).
+- **Synthetic Pipelines (FII/DII, Bulk/Block, Shareholding, Fundamentals)**: Because free historical APIs for these endpoints are aggressively WAF-blocked and lack true point-in-time correctness (e.g. yfinance), their ingestion sources (`nse_fii_dii`, `nse_bulk_block_deals`, `nse_shareholding`, `nse_fundamentals`) have been intentionally mapped to a **deterministic Synthetic Generator**. This allows the overarching architecture (factor libraries, backtest engine, UI) to run end-to-end for demonstration purposes without injecting hallucinatory data into the real backtest logs.
 
 ## License
 

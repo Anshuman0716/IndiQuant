@@ -44,6 +44,8 @@ _MONTHS = [
 
 
 class EquityBhavcopySource(Source):
+    natural_keys = ["date", "symbol", "series"]
+    natural_keys = ["date", "symbol", "series"]
     """NSE daily equity OHLCV + delivery data.
 
     This is Source #1 in the dependency chain. All other sources

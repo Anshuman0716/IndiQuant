@@ -12,6 +12,7 @@ from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.store.schemas import ParticipantOiSchema
 
+
 class ParticipantOiSource(Source):
     """NSE Participant open interest source."""
 

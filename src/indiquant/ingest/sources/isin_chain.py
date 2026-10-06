@@ -4,14 +4,15 @@ Maps a stable security_id (hash of canonical symbol) to validity-dated ISINs.
 """
 
 import hashlib
-import polars as pl
-import structlog
+
 import duckdb
 import pandas as pd
+import polars as pl
+import structlog
 
 from indiquant.ingest.base import Source
-from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.ingest.calendar import TradingCalendar
+from indiquant.ingest.models import RawPayload, ValidationIssue
 
 logger = structlog.get_logger(__name__)
 
@@ -60,10 +61,7 @@ class IsinChainSource(Source):
                     ORDER BY symbol, isin
                 """
                 df = cur.execute(query).df()
-                if df.empty:
-                    content = b"empty"
-                else:
-                    content = df.to_csv(index=False).encode('utf-8')
+                content = b"empty" if df.empty else df.to_csv(index=False).encode('utf-8')
         except duckdb.IOException:
             logger.warning("isin_chain_failed", msg="equity_daily not found.")
             content = b"empty"

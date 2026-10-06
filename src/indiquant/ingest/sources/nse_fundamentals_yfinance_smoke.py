@@ -4,20 +4,18 @@ This source is strictly for smoke-testing the CLI and factor pipeline.
 It writes to a separate 'fundamentals_smoke' table.
 """
 
-from datetime import date
-import io
 import json
+from datetime import date
 
-import pandas as pd
+import pandera.polars as pa
 import polars as pl
 import structlog
 import yfinance as yf
+from pandera.typing.polars import Series
 
 from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.store.schemas import _ProvenanceMixin
-import pandera.polars as pa
-from pandera.typing.polars import Series
 
 logger = structlog.get_logger(__name__)
 
@@ -66,8 +64,8 @@ class YFinanceFundamentalsSmokeSource(Source):
         # only when target_date == date(2024, 12, 31) (the end of the backfill).
         # For other dates, we return empty payload.
         if target_date != date(2024, 12, 31):
-            from datetime import datetime, UTC
             import hashlib
+            from datetime import UTC, datetime
             body_bytes = b"[]"
             return RawPayload(
                 source=self.name,
@@ -137,8 +135,8 @@ class YFinanceFundamentalsSmokeSource(Source):
             except Exception as e:
                 logger.warning("yfinance_fetch_failed", symbol=sym, error=str(e))
                 
-        from datetime import datetime, UTC
         import hashlib
+        from datetime import UTC, datetime
         
         body_bytes = json.dumps(results).encode("utf-8")
         raw_hash = hashlib.sha256(body_bytes).hexdigest()

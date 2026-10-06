@@ -1,10 +1,13 @@
 """MTO Delivery data source."""
-from datetime import date
-import polars as pl
-import structlog
 import io
-from indiquant.ingest.models import RawPayload, ValidationIssue
+from datetime import date
+
+import polars as pl
+
 from indiquant.ingest.base import Source
+from indiquant.ingest.models import RawPayload, ValidationIssue
+
+
 class _MinimalSchema:
     pass
 

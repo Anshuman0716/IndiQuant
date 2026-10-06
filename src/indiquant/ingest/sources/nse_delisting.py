@@ -4,17 +4,14 @@ Provides explicit dates and reasons for security delistings.
 """
 
 from datetime import date
-from typing import Any
 
-import pandas as pd
+import pandera.polars as pa
 import polars as pl
-import structlog
 from pandera.typing.polars import Series
 
 from indiquant.ingest.base import Source
 from indiquant.ingest.models import RawPayload, ValidationIssue
 from indiquant.store.schemas import _ProvenanceMixin
-import pandera.polars as pa
 
 
 class DelistingSchema(_ProvenanceMixin):

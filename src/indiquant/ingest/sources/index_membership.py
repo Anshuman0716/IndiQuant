@@ -10,7 +10,8 @@ Output: (index_name, isin, valid_from, valid_to) with valid_to=NULL for current.
 """
 
 import io
-from datetime import date, datetime
+from datetime import date
+
 import pandas as pd
 import polars as pl
 import structlog
@@ -154,6 +155,8 @@ class IndexMembershipSource(Source):
     silver_table = "index_membership"
     rate_limit_rps = 1.0
     min_rows = 1
+    is_snapshot = True
+    natural_keys = ["index_name", "security_id", "valid_from"]
 
     class _MinimalSchema:
         """Placeholder until full schema is defined."""
@@ -260,9 +263,8 @@ class IndexMembershipSource(Source):
                         "valid_from": valid_from, 
                         "valid_to": dt
                     })
-            elif r["type"] == "inclusion":
-                if sym not in active:
-                    active[sym] = dt
+            elif r["type"] == "inclusion" and sym not in active:
+                active[sym] = dt
 
         # Close open intervals
         for sym, valid_from in active.items():

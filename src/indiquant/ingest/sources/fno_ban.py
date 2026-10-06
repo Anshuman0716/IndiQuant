@@ -1,9 +1,12 @@
 """F&O Ban list data source."""
 from datetime import date
+
 import polars as pl
-import structlog
-from indiquant.ingest.models import RawPayload, ValidationIssue
+
 from indiquant.ingest.base import Source
+from indiquant.ingest.models import RawPayload, ValidationIssue
+
+
 class _MinimalSchema:
     pass
 

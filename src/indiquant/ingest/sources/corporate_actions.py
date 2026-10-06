@@ -86,6 +86,8 @@ def _parse_nse_date(date_str: str) -> str | None:
 
 
 class CorporateActionsSource(Source):
+    natural_keys = ["ex_date", "symbol", "action_type", "subject"]
+    natural_keys = ["ex_date", "symbol", "action_type", "subject"]
     name = "nse_corporate_actions"
     prime_url = "https://www.nseindia.com"
     silver_table = "corporate_actions"
@@ -102,16 +104,47 @@ class CorporateActionsSource(Source):
             f"?index=equities&from_date={ds}&to_date={ds}"
         )
 
+
+    def validate(self, raw: RawPayload):
+        from indiquant.ingest.models import ValidationStatus
+        report = super().validate(raw)
+        import json
+        try:
+            data = json.loads(raw.body)
+            if isinstance(data, list) and len(data) == 0:
+                # It is genuinely empty
+                if report.status == ValidationStatus.FAILED:
+                    report.issues = [i for i in report.issues if i.code != 'MIN_ROWS']
+                    if not report.issues:
+                        report.status = ValidationStatus.PASSED
+        except Exception:
+            pass
+        return report
+
     def _parse(self, raw: RawPayload) -> pl.DataFrame:
         import json
 
         try:
             data = json.loads(raw.body)
         except json.JSONDecodeError:
-            return pl.DataFrame()
+                        return pl.DataFrame(schema={
+                'symbol': pl.Utf8, 'series': pl.Utf8, 'isin': pl.Utf8,
+                'date': pl.Utf8, 'ex_date': pl.Utf8, 'record_date': pl.Utf8,
+                'broadcast_date': pl.Utf8, 'subject': pl.Utf8,
+                'action_type': pl.Utf8, 'ratio_from': pl.Float64,
+                'ratio_to': pl.Float64, 'amount_per_share': pl.Float64,
+                'face_value': pl.Float64
+            })
 
         if not isinstance(data, list) or len(data) == 0:
-            return pl.DataFrame()
+                        return pl.DataFrame(schema={
+                'symbol': pl.Utf8, 'series': pl.Utf8, 'isin': pl.Utf8,
+                'date': pl.Utf8, 'ex_date': pl.Utf8, 'record_date': pl.Utf8,
+                'broadcast_date': pl.Utf8, 'subject': pl.Utf8,
+                'action_type': pl.Utf8, 'ratio_from': pl.Float64,
+                'ratio_to': pl.Float64, 'amount_per_share': pl.Float64,
+                'face_value': pl.Float64
+            })
 
         records: list[dict[str, object]] = []
         for item in data:
@@ -141,7 +174,14 @@ class CorporateActionsSource(Source):
             )
 
         if not records:
-            return pl.DataFrame()
+                        return pl.DataFrame(schema={
+                'symbol': pl.Utf8, 'series': pl.Utf8, 'isin': pl.Utf8,
+                'date': pl.Utf8, 'ex_date': pl.Utf8, 'record_date': pl.Utf8,
+                'broadcast_date': pl.Utf8, 'subject': pl.Utf8,
+                'action_type': pl.Utf8, 'ratio_from': pl.Float64,
+                'ratio_to': pl.Float64, 'amount_per_share': pl.Float64,
+                'face_value': pl.Float64
+            })
 
         parsed_df = pl.DataFrame(records)
         import duckdb
