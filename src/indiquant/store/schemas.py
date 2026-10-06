@@ -14,6 +14,24 @@ class _ProvenanceMixin(pa.DataFrameModel):
     )
 
 
+class CorporateActionsSchema(_ProvenanceMixin):
+    """Corporate actions structured data."""
+
+    symbol: Series[str] = pa.Field(nullable=True, coerce=True)
+    series: Series[str] = pa.Field(nullable=True, coerce=True)
+    isin: Series[str] = pa.Field(nullable=True, coerce=True)
+    date: Series[str] = pa.Field(nullable=True, coerce=True)
+    ex_date: Series[str] = pa.Field(nullable=True, coerce=True)
+    record_date: Series[str] = pa.Field(nullable=True, coerce=True)
+    broadcast_date: Series[str] = pa.Field(nullable=True, coerce=True)
+    subject: Series[str] = pa.Field(nullable=True, coerce=True)
+    action_type: Series[str] = pa.Field(nullable=True, coerce=True)
+    ratio_from: Series[pl.Float64] = pa.Field(nullable=True, coerce=True)
+    ratio_to: Series[pl.Float64] = pa.Field(nullable=True, coerce=True)
+    amount_per_share: Series[pl.Float64] = pa.Field(nullable=True, coerce=True)
+    face_value: Series[pl.Float64] = pa.Field(nullable=True, coerce=True)
+
+
 class EquityDailySchema(_ProvenanceMixin):
     """OHLCV daily bars for NSE/BSE equities."""
 

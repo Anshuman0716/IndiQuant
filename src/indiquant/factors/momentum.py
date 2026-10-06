@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
     min_history_days=252,
     required_tables=["equity_daily"],
     unit="%",
-    validation_status="rejected",
+
 )
 def momentum_12_1(ctx: FactorContext, asof: date) -> pd.Series:
     """12-month momentum, excluding the most recent 1 month (12-1).
@@ -132,6 +132,7 @@ def momentum_12_1(ctx: FactorContext, asof: date) -> pd.Series:
     mom = mom.to_frame("mom").join(latest_isin)
     mom = mom.dropna(subset=["current_isin"]).set_index("current_isin")["mom"]
     mom.index.name = "isin"
+    mom = mom[~mom.index.duplicated(keep="first")]
 
     dropped = int(mom.isna().sum())
     if dropped > 0:
@@ -147,7 +148,7 @@ def momentum_12_1(ctx: FactorContext, asof: date) -> pd.Series:
     min_history_days=126,
     required_tables=["equity_daily"],
     unit="%",
-    validation_status="rejected",
+
 )
 def momentum_6(ctx: FactorContext, asof: date) -> pd.Series:
     """6-month momentum.
@@ -200,7 +201,7 @@ def momentum_6(ctx: FactorContext, asof: date) -> pd.Series:
     min_history_days=63,
     required_tables=["equity_daily"],
     unit="%",
-    validation_status="rejected",
+
 )
 def momentum_3(ctx: FactorContext, asof: date) -> pd.Series:
     """3-month momentum.
@@ -251,7 +252,7 @@ def momentum_3(ctx: FactorContext, asof: date) -> pd.Series:
     min_history_days=252,
     required_tables=["equity_daily"],
     unit="%",
-    validation_status="rejected",
+
 )
 def price_vs_52w_high(ctx: FactorContext, asof: date) -> pd.Series:
     """Price vs 52-Week High.
@@ -280,3 +281,55 @@ def price_vs_52w_high(ctx: FactorContext, asof: date) -> pd.Series:
     ratio = ratio.where(counts >= 200, np.nan)
 
     return ratio.replace([np.inf, -np.inf], np.nan)
+
+@factor(
+    id="reversal_1m",
+    pillar="MOMENTUM",
+    direction=-1,
+    min_history_days=30,
+    required_tables=["equity_daily"],
+    unit="%",
+)
+def reversal_1m(ctx: FactorContext, asof: date) -> pd.Series:
+    """1-month reversal."""
+    prices = ctx.get_prices(asof, lookback_days=45)
+    if prices.empty:
+        return pd.Series(dtype=float)
+        
+    prices = prices.sort_values(["isin", "date"])
+    
+    # 20 trading days
+    def _rev(g):
+        if len(g) < 15:
+            return np.nan
+        # return over last 20 days
+        closes = g["close"].values
+        return (closes[-1] / closes[max(0, len(closes)-21)]) - 1.0
+        
+    rev = prices.groupby("isin").apply(_rev, include_groups=False)
+    return rev
+
+@factor(
+    id="high_52w",
+    pillar="MOMENTUM",
+    direction=1,
+    min_history_days=252,
+    required_tables=["equity_daily"],
+    unit="x",
+)
+def high_52w(ctx: FactorContext, asof: date) -> pd.Series:
+    """Close / 52-week high."""
+    prices = ctx.get_prices(asof, lookback_days=380)
+    if prices.empty:
+        return pd.Series(dtype=float)
+        
+    prices = prices.sort_values(["isin", "date"])
+    
+    def _h52(g):
+        if len(g) < 200:
+            return np.nan
+        closes = g["close"]
+        return closes.iloc[-1] / closes.max()
+        
+    h52 = prices.groupby("isin").apply(_h52, include_groups=False)
+    return h52
