@@ -105,10 +105,6 @@ Every silver row carries provenance: `source`, `ingested_at`, `raw_hash`, `knowl
 - `FactorContext` + `decile-report` CLI command for generating PDF tearsheets.
 - Automated daily strategy tracking.
 
-### ✅ Phase 11 — Interactive UI & Dashboard (Complete)
-- **Streamlit Web Application (`app.py`)**: A fully interactive local dashboard to configure and execute backtests dynamically.
-- **Visual Analytics**: Automatically renders equity curves comparing cost-adjusted (Real) vs zero-cost (Paper) portfolios, explicitly demonstrating the friction drag of the Indian statutory cost stack.
-
 ## Tech Stack
 
 | Layer | Technology | Why |
@@ -252,7 +248,7 @@ All data comes from **free, public endpoints**. No paid API keys are used.
 - **Corporate Actions Duplication (Split Amnesia Bug)**: The raw `corporate_actions` data ingested from NSE contains exact duplicate records on certain dates for events like splits and bonuses. Since `get_adjusted_prices` chains factors multiplicatively, this duplicates the adjustment (e.g., a 5:1 split applied twice creates a 25x artificial multiplier on lookback prices, yielding artificial daily returns exceeding 400%). **Factor backtesting is blocked until these ingestion duplicates are quarantined.**
 - **F&O 2016-2018 knowledge_date inference**: The NSE server migration in 2019 overwrote timestamps, making `knowledge_date = trade_date` an inference drawn from post-2019 consistency rather than a mathematically proven fact for those specific years.
 - **Participant OI checksum behaviour**: NSE's raw `TOTAL` row fails vertical/horizontal checksums on 821 of 2,176 trading days (37.7%), but all mismatches are bounded to ±2 contracts out of millions. Two distinct failure modes identified: stochastic vertical mismatches (pre-June 2021) and a structural horizontal aggregation bug (post-June 25, 2021).
-- **Synthetic Pipelines (FII/DII, Bulk/Block, Shareholding, Fundamentals)**: Because free historical APIs for these endpoints are aggressively WAF-blocked and lack true point-in-time correctness (e.g. yfinance), their ingestion sources (`nse_fii_dii`, `nse_bulk_block_deals`, `nse_shareholding`, `nse_fundamentals`) have been intentionally mapped to a **deterministic Synthetic Generator**. This allows the overarching architecture (factor libraries, backtest engine, UI) to run end-to-end for demonstration purposes without injecting hallucinatory data into the real backtest logs.
+- **Synthetic Pipelines (FII/DII, Bulk/Block, Shareholding, Fundamentals)**: Because free historical APIs for these endpoints are aggressively WAF-blocked and lack true point-in-time correctness (e.g. yfinance), their ingestion sources (`nse_fii_dii`, `nse_bulk_block_deals`, `nse_shareholding`, `nse_fundamentals`) have been intentionally mapped to a **deterministic Synthetic Generator**. This allows the overarching architecture (factor libraries, backtest engine) to run end-to-end for demonstration purposes without injecting hallucinatory data into the real backtest logs.
 
 ## License
 
